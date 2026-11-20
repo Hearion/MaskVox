@@ -1,0 +1,180 @@
+"""Phase-vocoder voice shaping: pitch, formants and the excitation itself."""
+
+from __future__ import annotations
+
+import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
+
+SAMPLE_RATE = 48000
+FFT = 2048
+HOP = 512
+BINS = FFT // 2 + 1
+# A sample leaves the overlap-add buffer this long after it enters.
+LATENCY = FFT - HOP
+
+_OVERSAMPLING = FFT // HOP
+_TWO_PI = 2 * np.pi
+_WINDOW = np.hanning(FFT + 1)[:-1].astype(np.float32)
+# Squared Hann windows at 75 % overlap add up to 1.5.
+_SYNTHESIS = _WINDOW / 1.5
+_BIN = np.arange(BINS)
+_EXPECTED = _TWO_PI * _BIN / _OVERSAMPLING
+# Zero phase puts each frame's pulse at sample 0, where the window is zero.
+# Alternating signs move it to the middle of the frame.
+_CENTERED = np.where(_BIN % 2, -1.0, 1.0)
+# Quefrencies below the lifter describe the vocal tract, the rest the pitch.
+# A longer lifter resolves formants better but must stay under the pitch
+# period, so it follows the speaker's pitch between these bounds.
+_MIN_LIFTER, _DEFAULT_LIFTER, _MAX_LIFTER = 64, 120, 220
+_MIN_LAG = SAMPLE_RATE // 600
+_MAX_LAG = SAMPLE_RATE // 65
+_SCALE_STEPS = np.array([0, 2, 4, 5, 7, 9, 11, 12])
+
+
+def _band(low: float, high: float) -> np.ndarray:
+    hz = _BIN * SAMPLE_RATE / FFT
+    mask = np.ones(BINS)
+    if low:
+        mask *= np.clip((hz - 0.7 * low) / (0.3 * low), 0, 1)
+    if high:
+        mask *= np.clip((1.3 * high - hz) / (0.3 * high), 0, 1)
+    return mask * mask * (3 - 2 * mask)
+
+
+BANDS = {
+    "full": None,
+    "phone": _band(300, 3400),
+    "radio": _band(500, 2600),
+    "muffled": _band(0, 700),
+}
+MODES = ("normal", "robot", "whisper")
+
+
+def _envelope(magnitude: np.ndarray, lifter: int) -> np.ndarray:
+    """Smooth spectral envelope from the low part of the cepstrum."""
+    # Without a floor the gaps between harmonics drag the envelope down.
+    floor = max(1e-7, 1e-3 * float(magnitude.max()))
+    cepstrum = np.fft.irfft(np.log(np.maximum(magnitude, floor)))
+    cepstrum[lifter : -lifter + 1] = 0
+    return np.exp(np.fft.rfft(cepstrum).real)
+
+
+def _pitch(magnitude: np.ndarray) -> float:
+    """Fundamental frequency from the autocorrelation, or 0 when unvoiced."""
+    correlation = np.fft.irfft(magnitude * magnitude)[: _MAX_LAG + 2]
+    lag = int(np.argmax(correlation[_MIN_LAG : _MAX_LAG + 1])) + _MIN_LAG
+    if lag in (_MIN_LAG, _MAX_LAG) or correlation[lag] < 0.35 * correlation[0]:
+        return 0.0
+    before, peak, after = correlation[lag - 1 : lag + 2]
+    curvature = before - 2 * peak + after
+    offset = 0.5 * (before - after) / curvature if curvature < 0 else 0.0
+    return SAMPLE_RATE / (lag + offset)
+
+
+def _snap(frequency: float) -> float:
+    """Nearest note of the C major scale."""
+    octave, step = divmod(69 + 12 * np.log2(frequency / 440), 12)
+    nearest = _SCALE_STEPS[np.argmin(np.abs(_SCALE_STEPS - step))]
+    return 440 * 2 ** ((octave * 12 + nearest - 69) / 12)
+
+
+class Vocoder:
+    """Streaming short-time Fourier processor. Blocks are multiples of HOP."""
+
+    def __init__(self) -> None:
+        self._input = np.zeros(FFT, dtype=np.float32)
+        self._output = np.zeros(FFT, dtype=np.float64)
+        self._last_phase = np.zeros(BINS)
+        self._rotation = np.zeros(BINS)
+        self._tune = 1.0
+        self._lifter = _DEFAULT_LIFTER
+        self._random = np.random.default_rng()
+
+    def _shift(
+        self, spectrum: np.ndarray, magnitude: np.ndarray, frequency: np.ndarray,
+        ratio: float, envelope: np.ndarray, shaped: np.ndarray,
+    ) -> np.ndarray:
+        """Move every spectral peak, with the bins around it, to a new pitch.
+
+        Keeping each peak's neighbours together preserves their relative
+        phases, which is what keeps a shifted voice from sounding hollow.
+        Each bin trades the envelope where it was for the one where it lands.
+        """
+        padded = np.pad(magnitude, 2)
+        peaks = np.flatnonzero((magnitude == sliding_window_view(padded, 5).max(axis=1)) & (magnitude > 0))
+        if not len(peaks):
+            return np.zeros(BINS, dtype=np.complex128)
+        region = np.searchsorted((peaks[:-1] + peaks[1:] + 1) // 2, _BIN, side="right")
+        offset = frequency[peaks] * (ratio - 1)
+        rotation = (self._rotation[peaks] + offset * (_TWO_PI / _OVERSAMPLING))[region] % _TWO_PI
+        self._rotation = rotation
+        target = _BIN + np.rint(offset).astype(np.int64)[region]
+        audible = (target >= 0) & (target < BINS)
+        target = target[audible]
+        output = np.zeros(BINS, dtype=np.complex128)
+        moved = spectrum[audible] / envelope[audible] * shaped[target] * np.exp(1j * rotation[audible])
+        np.add.at(output, target, moved)
+        # A new pitch puts a different number of harmonics under the
+        # envelope. Keep the loudness of the frame that came in.
+        energy = float(np.sum(output.real**2 + output.imag**2))
+        gain = np.sqrt(float(np.sum(magnitude**2)) / energy) if energy > 0 else 1.0
+        return output * min(max(gain, 0.25), 4.0)
+
+    def _frame(self, params: dict) -> np.ndarray:
+        spectrum = np.fft.rfft(self._input * _WINDOW)
+        magnitude = np.abs(spectrum)
+        phase = np.angle(spectrum)
+        delta = phase - self._last_phase - _EXPECTED
+        self._last_phase = phase
+        delta -= _TWO_PI * np.round(delta / _TWO_PI)
+        # Each bin's measured frequency, in bins.
+        frequency = _BIN + delta * _OVERSAMPLING / _TWO_PI
+
+        mode = params.get("mode", "normal")
+        ratio = 2 ** (float(params.get("pitch", 0)) / 12)
+        formant = 2 ** (float(params.get("formant", 0)) / 12)
+        tune = bool(params.get("tune")) and mode == "normal"
+        if not tune:
+            self._tune = 1.0
+
+        if mode == "normal" and ratio == 1 and formant == 1 and not tune:
+            output = spectrum
+            self._rotation[:] = 0
+        else:
+            voiced = _pitch(magnitude)
+            if voiced:
+                self._lifter = int(np.clip(0.6 * SAMPLE_RATE / voiced, _MIN_LIFTER, _MAX_LIFTER))
+                if tune:
+                    self._tune = _snap(voiced * ratio) / (voiced * ratio)
+            ratio *= self._tune
+            envelope = _envelope(magnitude, self._lifter)
+            shaped = envelope if formant == 1 else np.interp(_BIN / formant, _BIN, envelope, right=0)
+            if mode != "normal":
+                # The envelope runs below the harmonic peaks. Restore the
+                # frame's energy for the synthetic excitations.
+                shaped = shaped * np.sqrt(np.sum(magnitude**2) / max(float(np.sum(shaped**2)), 1e-12))
+            if mode == "robot":
+                output = shaped * _CENTERED
+            elif mode == "whisper":
+                # Frames with unrelated phases add up weaker than aligned ones.
+                output = 1.3 * shaped * np.exp(1j * self._random.uniform(0, _TWO_PI, BINS))
+            else:
+                output = self._shift(spectrum, magnitude, frequency, ratio, envelope, shaped)
+
+        mask = BANDS[params.get("band", "full")]
+        if mask is not None:
+            output = output * mask
+        return np.fft.irfft(output) * _SYNTHESIS
+
+    def process(self, block: np.ndarray, params: dict) -> np.ndarray:
+        if len(block) % HOP:
+            raise ValueError("音频块长度必须是 512 的整数倍")
+        result = np.empty(len(block), dtype=np.float32)
+        for start in range(0, len(block), HOP):
+            self._input[:-HOP] = self._input[HOP:]
+            self._input[-HOP:] = block[start : start + HOP]
+            self._output += self._frame(params)
+            result[start : start + HOP] = self._output[:HOP]
+            self._output[:-HOP] = self._output[HOP:]
+            self._output[-HOP:] = 0
+        return result

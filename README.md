@@ -1,100 +1,86 @@
 # MaskVox
 
-MaskVox 是 Windows 10/11 x64 上的实时 RVC 变声器。它把麦克风输入转换为所选音色，可输出到 VB-Cable，供语音聊天和游戏使用。变声在本机运行。
+MaskVox 是 Windows 10/11 x64 上的实时变声器。它用传统信号处理改变麦克风的声音，可输出到 VB-Cable，供语音聊天和游戏使用。变声在本机运行，不需要显卡，也不需要下载模型。
 
 ## 开始使用
 
-1. 将便携版完整解压到可写目录，双击 `start.bat`。首次启动会选中一个内置音色。
-2. 在「沉稳男声」和「清亮女声」间切换，点击「试听音色」即可播放随包样本。要实时变声，选择麦克风与耳机，再点击中间的电源按钮。
-3. 要接入微信、QQ、Discord、KOOK 或游戏，点击顶栏的「安装 VB-Cable」。安装器已随包提供。按 Windows 管理员授权和安装器的提示安装，随后重启 Windows。
-4. 回到 MaskVox 后，刷新音频设备，把「输出到」设为 **CABLE Input**。在聊天或游戏软件里把麦克风设为 **CABLE Output**，扬声器设为日常使用的耳机或音箱。
-5. 如需其他音色，点击「导入音色」或把音色包拖入音色库。卡片菜单可以管理已导入的音色。
+1. 在源码目录双击 `install.bat` 安装运行环境，再双击 `start.bat`。便携版解压后直接双击 `start.bat`。
+2. 选一个音效，点右侧的开关开始变声。运行中可以随时切换音效和拖动滑块。
+3. 要接入微信、QQ、Discord、KOOK 或游戏，点击顶栏的「安装虚拟麦克风」。按 Windows 管理员授权和安装器的提示安装 VB-Cable，随后重启 Windows。
+4. 回到 MaskVox，点右上角的设置，刷新设备，把「输出到」设为 **CABLE Input**。在聊天或游戏软件里把麦克风设为 **CABLE Output**，扬声器保持为日常使用的耳机或音箱。
 
-在 Discord 的「语音和视频」、KOOK 的语音设置，以及微信和 QQ 通话或应用的音频设置里查找麦克风选项。没有单独选项的应用可以跟随 Windows「设置 → 系统 → 声音 → 输入」里的默认设备。需要退出原有通话或重启应用，设备列表才可能刷新。
+没有单独麦克风选项的应用会跟随 Windows「设置 → 系统 → 声音 → 输入」里的默认设备。可能需要退出原有通话或重启应用，设备列表才会刷新。
 
-软件用于朋友间的娱乐。请勿用于冒充他人、诈骗或其他违法用途。请使用你有权使用的音色，并确认音色包和索引的来源。两款内置音色分别由同类 RVC 模型融合而成。 [内置音色署名](assets/builtin-voices/NOTICE.md)
+软件用于朋友间的娱乐。请勿用于冒充他人、诈骗或其他违法用途。
 
-VB-Cable 由 VB-Audio 提供。便携版附带原版 VB-Cable 标准版离线安装包。VB-Cable 采用 Donationware 模式，欢迎捐助或购买许可。 [VB-Audio 官方页面](https://vb-audio.com/Cable/) · [捐助与购买许可](https://shop.vb-audio.com/en/win-apps/11-vb-cable.html)
+VB-Cable 由 VB-Audio 提供，采用 Donationware 模式，欢迎捐助或购买许可。 [VB-Audio 官方页面](https://vb-audio.com/Cable/) · [捐助与购买许可](https://shop.vb-audio.com/en/win-apps/11-vb-cable.html)
 
-## 导入社区 RVC 音色
+## 音效
 
-源码版支持带音高的 RVC v1 和 v2 音色，采样率为 32 kHz、40 kHz 或 48 kHz。可以导入单个 `.pth`、一并选择配套的 `.index`，或导入包含音色和索引的 `.zip`。导入时会转换成 ONNX，并检查两种输入长度的推理结果。转换期间可取消，已完成的音色会保留在库中。
-
-- 在源码目录双击 `install.bat` 安装主程序。脚本使用 Python 3.10 x64，必要时把 Python 官方的 NuGet 运行环境解压到项目内。
-- 双击 `install_converter.bat` 安装转换组件并下载、校验、导出基础模型。转换组件的独立环境约 1.16 GB，下载缓存和 FP32 基础模型另外占用约 1.3 GB。
-- 双击源码目录的 `start.bat`，导入社区音色。要分享给便携版用户，在音色菜单中选择「导出音色包」并保存为 `.maskvox`。
-
-安装脚本默认使用清华 PyPI 源，失败时尝试官方源。可以在启动脚本前设置 `PIP_INDEX_URL`。基础模型默认先试 Hugging Face 镜像，再试官方站点，也可设置 `HF_ENDPOINT`。手动下载时请保留下面的文件名和路径。导出脚本会验证快照的 SHA-256。
-
-| 源码目录下的位置 | 固定快照 |
+| 音效 | 做法 |
 | --- | --- |
-| `assets/sources/contentvec/config.json` | [ContentVec 配置](https://huggingface.co/lengyue233/content-vec-best/resolve/ab04aa7067b99ee05cc82499bc64916b980a1967/config.json) |
-| `assets/sources/contentvec/pytorch_model.bin` | [ContentVec 权重](https://huggingface.co/lengyue233/content-vec-best/resolve/ab04aa7067b99ee05cc82499bc64916b980a1967/pytorch_model.bin) |
-| `assets/sources/rmvpe.pt` | [RMVPE 权重](https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/e6d0c1a17da07c33557852f9dfa2bd44cc75737d/rmvpe.pt) |
+| 女声、萝莉、正太 | 升高音调，同时把共振峰调细 |
+| 大叔、巨人、恶魔 | 降低音调，把共振峰调粗。恶魔另加失真和混响 |
+| 花栗鼠 | 音调和共振峰一起升高，像快放的磁带 |
+| 机器人 | 去掉语调，所有字落在同一个音高 |
+| 幽灵 | 把声带的振动换成气声，再加混响 |
+| 电音 | 把音高吸附到 C 大调音阶 |
+| 外星人 | 环形调制产生的金属颤音 |
+| 电话、对讲机、水下 | 限制频带，对讲机另加失真，水下另加抖动 |
+| 山洞 | 回声加混响 |
 
-## 调节与排查
+「微调」里的四个滑块对任何音效都有效。
 
-- **没声音**　确认输入电平会随讲话变化，当前音色已选中，主输出已选对。聊天软件里的输入应为 `CABLE Output`。如果设备被独占或拔掉，关闭占用它的应用，停止变声后刷新设备，再重新开始。
-- **有回声**　关闭「自己监听」，或佩戴耳机并降低监听音量。聊天软件的播放设备保持为耳机或音箱。
-- **延迟偏大**　优先尝试「低延迟」，在设置里确认当前显卡是 RTX 3070 或另一张硬件显卡。状态栏显示估算链路延迟，聊天软件和网络的额外延迟由它们各自决定。
-- **听不清或像另一种口音**　男声用女声音色时点「男→女 +12」，女声用男声音色时点「女→男 −12」，再按听感微调。讲话时输入电平宜在 −30 dB 以上，偏低时调高 Windows 里的麦克风音量。内置音色用尼泊尔语语音训练，说中文时咬字偏弱，导入用中文语音训练并带索引的音色会清楚得多。
-- **字头或句尾被吞**　把「噪声门」向左调低。环境安静时可以调到最左端关闭。
-- **声音断续或游戏掉帧**　查看状态栏的推理耗时。出现性能提示时，可试用「均衡」或「高质量」，并为显卡留出余量。CPU 模式适合排查问题及离线转换。
-- **没有索引或检索不可用**　音色仍可变声。需要音色贴合时，导入与该音色配套的索引，优先选 `added_` 开头的文件。
-- **窗口无法打开**　确认系统可使用 Microsoft Edge WebView2 Runtime，查看程序目录下的 `logs/maskvox.log`。如果日志显示 ONNX Runtime 无法加载 DLL，可检查 x64 Visual C++ 运行时。 [WebView2 运行时](https://developer.microsoft.com/microsoft-edge/webview2/) · [Visual C++ 运行时](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+- **音调**　以半音为单位升降。男声变女声通常在 +7 到 +10 之间，女声变男声在 −4 到 −7 之间。
+- **音色粗细**　移动共振峰，改变嗓音听起来的体型。只升音调不调它，声音会像原来的人在捏着嗓子说话。
+- **回声**、**混响**　空间效果的多少。
 
-音色保存在 `voices/`，设置写入 `settings.json`。下次启动会恢复选择和参数，需手动开启变声。
+点「还原」回到当前音效的默认值。
 
-MaskVox 1.1.0 便携版包含 Python、通过校验的 FP16 基础模型、两款内置音色和 VB-Cable 原版离线安装包。
+## 排查
 
-## 离线转换与打包
+- **没声音**　确认输入电平会随讲话变化，「输出到」选对了设备，聊天软件里的麦克风是 `CABLE Output`。设备被独占或拔掉时，停止变声，在设置里刷新设备，再重新开始。
+- **字头或句尾被吞**　把设置里的「噪声门」向左调低。环境安静时可以调到最左端关闭。
+- **有回声**　关闭「自己监听」，或佩戴耳机并降低监听音量。
+- **声音断续**　状态栏会显示断续次数和每块音频的处理耗时。处理耗时通常不到 1 毫秒。出现「电脑负载过高」时，关闭占用 CPU 的程序。
+- **变声不够像真人**　这是信号处理的上限。音调改动越大，声音越不自然。把音调控制在 ±7 半音以内，并配合「音色粗细」会好一些。
+- **窗口无法打开**　确认系统可使用 Microsoft Edge WebView2 Runtime，查看程序目录下的 `logs/maskvox.log`。 [WebView2 运行时](https://developer.microsoft.com/microsoft-edge/webview2/)
 
-离线 WAV 转换使用与实时变声相同的分块、音高和 SOLA 拼接。调用时用音色库中的八位文件夹 ID。添加 `--gpu -1` 可选择 CPU。
+设置写入 `settings.json`。下次启动会恢复音效和参数，需手动开启变声。
+
+## 工作方式
+
+音频在 48 kHz 下按 21 毫秒一块处理。
+
+1. **噪声门**　按麦克风电平判断是否在说话，带 300 毫秒保持时间，不说话时把输出淡出。
+2. **声码器**　短时傅里叶变换，帧长 2048，重叠 75%。用倒谱分离出频谱包络（共振峰）和激励（音高），按频谱峰整体搬移来变调，再套上按「音色粗细」伸缩后的包络。机器人、幽灵和电音也在这一步完成。
+3. **时域效果**　环形调制、抖动、失真、回声，以及与一段合成的房间脉冲响应卷积得到的混响。
+4. **限幅**　只在接近满幅时压缩峰值。
+
+声码器带来 32 毫秒的固定延迟。加上分块、缓冲和声卡，整条链路约 100 到 130 毫秒，状态栏会显示估算值。
+
+## 打包
+
+以下命令生成不需要安装 Python 的便携目录。先把 VB-Cable 的官方安装包放到 `assets/drivers/`，打包脚本会校验它的 SHA-256。
 
 ```powershell
-.venv\Scripts\python.exe -m scripts.offline_convert --voice abcd1234 --in a.wav --out b.wav --pitch 0
-```
-
-以下命令生成用于复现便携版的 FP16 基础模型和发行包。初次转换生成的 FP32 文件仍会保存在 `assets/`，便于对照。精简发行包支持导入 `.maskvox`，适合分发给无需转换社区检查点的用户。
-
-```powershell
-converter\.venv\Scripts\python.exe -m converter.export_base_models --fp16-out assets/fp16-candidate
-converter\.venv\Scripts\python.exe -X utf8 -m converter.prepare_builtin_voices
 New-Item -ItemType Directory -Force assets\drivers
 curl.exe -fL https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack46.zip -o assets\drivers\VBCABLE_Driver_Pack46.zip
-.venv\Scripts\python.exe scripts\build_release.py --assets assets/fp16-candidate --out dist/MaskVox-local --zip
+.venv\Scripts\python.exe scripts\build_release.py --zip
 ```
 
-打包脚本会校验驱动包的 SHA-256，并检查内置音色和试听样本。
-
-## 验证记录
-
-本机使用 Windows 和 NVIDIA RTX 3070。使用 30 秒合成语音、真实 v2 音色及便携版的 FP16 基础模型，测得以下 DirectML 分块推理时间。FP16 基础模型另外通过了 CPU 数值校验和实际 DirectML 推理校验。
-
-| 延迟档位 | 音频块 | 推理中位数 | 推理 P95 |
-| --- | ---: | ---: | ---: |
-| 低延迟 | 120 ms | 32.3 ms | 33.6 ms |
-| 均衡 | 200 ms | 33.1 ms | 36.5 ms |
-| 高质量 | 350 ms | 35.3 ms | 37.6 ms |
-
-使用最终 FP16 管线和 HyperX 耳机路径，低延迟档的估算值中位数为 278 ms，P95 为 285 ms。设备缓冲与负载会影响估算值。测试有数次欠载回调，输入无溢出。HyperX 麦克风至耳机的独立直通试验连续 601 秒，欠载与溢出均为 0。
-
-在 30 分钟实时压力测试中，以合成语音模拟设备时钟，真实 v2 音色通过 RTX 3070 的 DirectML 和 FP32 基础模型持续运行。均衡档推理中位数为 63.9 ms，P95 为 72.7 ms。进程工作集约 1.28 GiB，输入无溢出，输出缓冲记录 7 次欠载。
-
-已用真实 v1 和 v2 音色完成转换与两种长度的验证，覆盖 `.maskvox` 导入、重新导出及重导。基础模型与真实音色的 ONNX 输出均对照 PyTorch 验证。另有自动化测试覆盖三种采样率的转换、损坏或不适用的检查点、恶意压缩包路径、ONNX 外部数据引用、合成模型分块、响度门限、音高、检索、缓冲及拼接。
-
-在 30 秒真实 v2 音色转换对照中，MaskVox FP32 与同噪声的原生 PyTorch 管线相比，输出信噪比为 80.17 dB。与上游默认噪声增益的结果相比，共同判定为有声的帧音高误差中位数为 0 音分，P95 为 20 音分。测试使用合成语音，原始音色及输出样本未随便携版分发。
-
-桌面界面测试覆盖本地文件启动、音色导入、实时启停和电平。用真实 v1/v2 模型及模拟音频设备测试，运行中切换音色用时约 2.5 秒。热调变调和关窗后恢复选择均通过验证。
+## 测试
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests -v
-converter\.venv\Scripts\python.exe -m unittest discover -s converter/tests -v
 ```
+
+测试用合成的元音信号检查变调后的音高、共振峰位置和响度，以及各效果、噪声门、设置和接口。
 
 ### 待真机验证
 
-- 当前机器没有 VB-Cable。通过 CABLE Input 和 CABLE Output、聊天软件与远端听者测量端到端物理延迟和听感。请在该链路上复测 30 分钟连续运行，并观察设备欠载。
-- 在另一台未安装 Python 的 Windows 电脑上复验便携版。当前机器已从独立的内嵌 Python 运行时测试。
+- 2.0 的变声引擎和界面还没有在 Windows 上运行过。需要确认真实麦克风下各音效的听感、状态栏的延迟和断续次数。
+- 通过 CABLE Input 和 CABLE Output、聊天软件与远端听者验证端到端效果。
+- 便携版打包脚本在 2.0 改动后还没有重新运行。
 
-第三方组件及权重来源见 [THIRD_PARTY.md](THIRD_PARTY.md)。
+第三方组件见 [THIRD_PARTY.md](THIRD_PARTY.md)。

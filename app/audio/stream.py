@@ -43,15 +43,16 @@ def timer_resolution():
 class AudioStreams:
     """Own one input and separate output clocks, with copy-only callbacks."""
 
-    def __init__(self, devices: dict, block_size: int, startup_delay_ms: float = 0) -> None:
+    def __init__(self, devices: dict, block_size: int) -> None:
         self._devices = devices
-        self._limit = block_size * 2
+        # Audio queued beyond this is dropped to catch up with real time.
+        self.limit = block_size + round(SAMPLE_RATE * 3 * JITTER_MS / 1000)
         self._silence = np.zeros(block_size, dtype=np.float32)
-        prefill = block_size + round(SAMPLE_RATE * (startup_delay_ms + JITTER_MS) / 1000)
-        self._startup_silence = np.zeros(min(self._limit, prefill), dtype=np.float32)
-        self.input = RingBuffer(block_size * 4)
-        self.output = RingBuffer(block_size * 4)
-        self.monitor = RingBuffer(block_size * 4)
+        prefill = block_size + round(SAMPLE_RATE * JITTER_MS / 1000)
+        self._startup_silence = np.zeros(prefill, dtype=np.float32)
+        self.input = RingBuffer(self.limit * 2)
+        self.output = RingBuffer(self.limit * 2)
+        self.monitor = RingBuffer(self.limit * 2)
         self.input_overflows = 0
         self.underruns = 0
         self.monitor_underruns = 0
@@ -69,7 +70,7 @@ class AudioStreams:
             self.input_overflows += 1
 
     def _render(self, data, frames, time_info, status) -> None:
-        self.output.trim(self._limit)
+        self.output.trim(self.limit)
         filled = self.output.read_into(data[:, 0])
         if filled < frames or status.output_underflow:
             self.underruns += 1
@@ -77,7 +78,7 @@ class AudioStreams:
             data[:, 1] = data[:, 0]
 
     def _render_monitor(self, data, frames, time_info, status) -> None:
-        self.monitor.trim(self._limit)
+        self.monitor.trim(self.limit)
         filled = self.monitor.read_into(data[:, 0])
         if not self.monitor_enabled:
             data.fill(0)

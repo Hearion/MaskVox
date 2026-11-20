@@ -1,8 +1,6 @@
 /.runtime/
 /.venv/
-/converter/.venv/
 /assets/
-/voices/
 /logs/
 /dist/
 /settings.json

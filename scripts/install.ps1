@@ -1,6 +1,4 @@
-﻿param([ValidateSet('App', 'Converter')][string]$Mode = 'App')
-
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $root
 $env:PYTHONUTF8 = '1'
@@ -79,7 +77,7 @@ function Get-Python310 {
     return $exe
 }
 
-$venv = if ($Mode -eq 'App') { '.venv' } else { 'converter\.venv' }
+$venv = '.venv'
 $python = Join-Path $root "$venv\Scripts\python.exe"
 if (!(Test-Path -LiteralPath $python)) {
     Run-Checked (Get-Python310) @('-m', 'venv', (Join-Path $root $venv))
@@ -88,28 +86,11 @@ if (!(Test-Path -LiteralPath $python)) {
 if ($LASTEXITCODE -ne 0) { throw '[MaskVox] 请使用 64 位 Python 3.10 创建项目虚拟环境。' }
 $defaultIndex = !$env:PIP_INDEX_URL
 if ($defaultIndex) { $env:PIP_INDEX_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple' }
-$requirements = if ($Mode -eq 'App') { 'requirements.txt' } else { 'converter\requirements.txt' }
+$requirements = 'requirements.txt'
 
-if ($Mode -eq 'Converter') {
-    try {
-        Run-Checked $python @('-m', 'pip', 'install', '--upgrade', 'pip>=25,<27')
-    } catch {
-        Use-OfficialIndex
-        Run-Checked $python @('-m', 'pip', 'install', '--upgrade', 'pip>=25,<27')
-    }
-    try {
-        Run-Checked $python @('-m', 'pip', 'install', 'torch==2.13.0+cpu', '--index-url', 'https://download.pytorch.org/whl/cpu', '--extra-index-url', $env:PIP_INDEX_URL)
-    } catch {
-        Use-OfficialIndex
-        Run-Checked $python @('-m', 'pip', 'install', 'torch==2.13.0+cpu', '--index-url', 'https://download.pytorch.org/whl/cpu', '--extra-index-url', $env:PIP_INDEX_URL)
-    }
-}
 try {
     Run-Checked $python @('-m', 'pip', 'install', '-r', (Join-Path $root $requirements))
 } catch {
     Use-OfficialIndex
     Run-Checked $python @('-m', 'pip', 'install', '-r', (Join-Path $root $requirements))
-}
-if ($Mode -eq 'Converter') {
-    Run-Checked $python @('-m', 'converter.export_base_models')
 }

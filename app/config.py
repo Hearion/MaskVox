@@ -11,20 +11,15 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
+from .engine.presets import BY_ID as PRESET_IDS
+
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = Path(os.environ.get("MASKVOX_DATA_DIR", ROOT)).expanduser().resolve()
 ASSETS_DIR = ROOT / "assets"
-BUILTIN_VOICES_DIR = ASSETS_DIR / "builtin-voices"
-VOICES_DIR = DATA_DIR / "voices"
 LOGS_DIR = DATA_DIR / "logs"
 SETTINGS_PATH = DATA_DIR / "settings.json"
-CONVERTER_DIR = ROOT / "converter"
-CONVERTER_PYTHON = CONVERTER_DIR / ".venv" / (
-    "Scripts/python.exe" if os.name == "nt" else "bin/python"
-)
 UI_PATH = ROOT / "app" / "ui" / "index.html"
-BASE_MODELS = ("contentvec.onnx", "rmvpe.onnx", "rmvpe_mel.npz")
-VERSION = "1.1.0"
+VERSION = "2.0.0"
 VB_CABLE_URL = "https://vb-audio.com/Cable/"
 VB_CABLE_SUPPORT_URL = "https://shop.vb-audio.com/en/win-apps/11-vb-cable.html"
 WEBVIEW_URL = "https://developer.microsoft.com/microsoft-edge/webview2/"
@@ -37,12 +32,12 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "output_name": None,
     "output_preferred": False,
     "monitor_name": None,
-    "selected_voice_id": None,
+    "preset": "original",
     "pitch": 0,
-    "index_rate": 0.5,
+    "formant": 0,
+    "echo": 0,
+    "reverb": 0,
     "gate_db": -50,
-    "latency_mode": "balanced",
-    "gpu_index": 0,
     "monitor": False,
     "monitor_volume": 0.6,
     "onboarding_dismissed": False,
@@ -51,23 +46,20 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _valid_setting(key: str, value: Any) -> bool:
-    if key == "gpu_index":
-        return type(value) is int and -1 <= value <= 64
-    if key == "latency_mode":
-        return value in ("low", "balanced", "high")
-    if key == "selected_voice_id" or key.endswith("_name"):
+    if key == "preset":
+        return value in PRESET_IDS
+    if key.endswith("_name"):
         return value is None or isinstance(value, str)
     if key.endswith("_id"):
         return value is None or (type(value) is int and value >= 0)
     if type(DEFAULT_SETTINGS[key]) is bool:
         return type(value) is bool
-    limits = {"pitch": (-12, 12), "index_rate": (0, 1), "gate_db": (-60, -20), "monitor_volume": (0, 1)}
+    limits = {
+        "pitch": (-12, 12), "formant": (-12, 12), "echo": (0, 1), "reverb": (0, 1),
+        "gate_db": (-60, -20), "monitor_volume": (0, 1),
+    }
     minimum, maximum = limits[key]
     return type(value) in (int, float) and minimum <= value <= maximum and math.isfinite(value)
-
-
-def base_models_ready() -> bool:
-    return all((ASSETS_DIR / name).is_file() for name in BASE_MODELS)
 
 
 def setup_logging() -> None:

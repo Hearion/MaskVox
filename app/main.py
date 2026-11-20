@@ -13,7 +13,6 @@ LOGGER = logging.getLogger(__name__)
 
 def create_window(events: Events, *, hidden: bool = False):
     import webview
-    from webview.dom import DOMEventHandler
 
     from .api import Api
 
@@ -21,20 +20,11 @@ def create_window(events: Events, *, hidden: bool = False):
     window = webview.create_window(
         "MaskVox", url=config.UI_PATH.as_uri(), js_api=api,
         width=1080, height=700, min_size=(960, 640), hidden=hidden,
-        background_color="#0b0d12", text_select=False,
+        background_color="#0e0f13", text_select=False,
     )
     api._window = window
 
-    def ready() -> None:
-        events.ready(window)
-        try:
-            library = window.dom.get_element("#voice-library")
-            if library is not None:
-                library.on("drop", DOMEventHandler(api._on_drop, prevent_default=True))
-        except Exception:
-            LOGGER.exception("无法启用拖拽导入，请使用文件选择按钮")
-
-    window.events.loaded += ready
+    window.events.loaded += lambda: events.ready(window)
     window.events.closing += events.close
     return window, api
 
