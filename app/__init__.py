@@ -1,0 +1,1 @@
+"""MaskVox desktop application."""

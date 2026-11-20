@@ -1,0 +1,12 @@
+/.runtime/
+/.venv/
+/converter/.venv/
+/assets/
+/voices/
+/logs/
+/dist/
+/settings.json
+/settings.json.tmp
+__pycache__/
+*.py[cod]
+.pytest_cache/
