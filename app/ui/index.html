@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>MaskVox</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <script defer src="js/state.js"></script>
+  <script defer src="js/bridge.js"></script>
+  <script defer src="js/components/meters.js"></script>
+  <script defer src="js/components/voice-library.js"></script>
+  <script defer src="js/main.js"></script>
+  <!-- An inline module also starts when Chromium opens this file directly. -->
+  <script type="module">
+    document.addEventListener('DOMContentLoaded', () => window.MaskVox.start(), { once: true });
+  </script>
+</head>
+<body>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 10v4m4-8v12m5-15v18m5-14v10m4-6v2"/></symbol>
+      <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m-4 4 4-4 4 4M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></symbol>
+      <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 2.5v9M6 5.8a8.7 8.7 0 1 0 12 0"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path d="m10 3-.8 2.4-2 1.1L4.8 6 3 9l1.7 1.9v2.2L3 15l1.8 3 2.4-.5 2 1.1L10 21h4l.8-2.4 2-1.1 2.4.5 1.8-3-1.7-1.9v-2.2L21 9l-1.8-3-2.4.5-2-1.1L14 3z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-usb" viewBox="0 0 24 24"><path d="M12 4v16m-3-13 3-3 3 3m-3 9c-3.4 0-5-1.5-5-4v-1m5 5c3.4 0 5-1.5 5-4v-1"/><circle cx="7" cy="10" r="1.2"/><rect x="16" y="8.5" width="2" height="2" rx=".5"/><circle cx="12" cy="20" r="1.5"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M6 18 18 6m-9 0h9v9"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 10a8 8 0 0 0-14-3L4 9m0-5v5h5m-5 5a8 8 0 0 0 14 3l2-2m0 5v-5h-5"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="m13.5 6.5 4 4M4 20l4.2-.8 11-11a2.8 2.8 0 1 0-4-4l-11 11L4 20Z"/></symbol>
+      <symbol id="i-export" viewBox="0 0 24 24"><path d="M12 4v11m-4-4 4 4 4-4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16m-10 4v6m4-6v6M9 7V4h6v3m3 0-.7 12a1 1 0 0 1-1 1H7.7a1 1 0 0 1-1-1L6 7"/></symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5.5 11v1a6.5 6.5 0 0 0 13 0v-1M12 19v3m-3 0h6"/></symbol>
+      <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Zm12 0a4.2 4.2 0 0 1 0 6m2-8a7 7 0 0 1 0 10"/></symbol>
+      <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M10 10h4v4h-4zM3 9h3m-3 6h3m12-6h3m-3 6h3M9 3v3m6-3v3M9 18v3m6-3v3"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="m12 3 9 16H3l9-16Zm0 6v4m0 3h.01"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></symbol>
+    </defs>
+  </svg>
+
+  <header class="topbar">
+    <div class="brand" aria-label="MaskVox">
+      <span class="brand-symbol"><svg><use href="#i-wave"/></svg></span>
+      <span>Mask<span class="brand-light">Vox</span></span>
+    </div>
+    <div class="topbar-actions">
+      <button class="top-link setup-warning" id="cable-guide" type="button" hidden>
+        <svg><use href="#i-usb"/></svg><span>未检测到虚拟麦克风</span><span class="top-link-action">去安装</span><svg class="arrow"><use href="#i-arrow"/></svg>
+      </button>
+      <button class="icon-button settings-toggle" id="settings-toggle" type="button" aria-label="设置" title="设置"><svg><use href="#i-settings"/></svg></button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="library" id="voice-library" aria-labelledby="library-title">
+      <div class="panel-heading">
+        <h2 id="library-title"><svg><use href="#i-layers"/></svg>音色库</h2>
+        <span class="voice-count" id="voice-count" aria-label="音色数量">0</span>
+      </div>
+      <button class="primary-button import-button" id="import-voices" type="button"><svg><use href="#i-plus"/></svg>导入音色</button>
+      <div class="library-scroll">
+        <div class="import-jobs" id="import-jobs" aria-label="导入进度" aria-live="polite"></div>
+        <div class="voice-list" id="voice-list" aria-label="已导入的音色"></div>
+        <button class="drop-empty" id="empty-library" type="button" hidden>
+          <span class="drop-icon"><svg><use href="#i-upload"/></svg></span>
+          <strong>添加你的第一个音色</strong>
+          <span>拖入文件或点击选择</span>
+          <small>.pth / .zip / .maskvox</small>
+        </button>
+      </div>
+      <section class="onboarding" id="onboarding" aria-labelledby="onboarding-title" hidden>
+        <div class="onboarding-heading"><h2 id="onboarding-title">首次使用</h2><button class="icon-button" id="close-onboarding" type="button" aria-label="关闭首次使用提示"><svg><use href="#i-close"/></svg></button></div>
+        <ol>
+          <li><button type="button" id="onboarding-install">安装 VB-Cable</button></li>
+          <li><button type="button" id="onboarding-import">导入一个音色</button></li>
+          <li>聊天软件的麦克风选择 <b>CABLE Output</b></li>
+        </ol>
+      </section>
+    </aside>
+
+    <section class="console" aria-labelledby="console-title">
+      <div class="console-heading">
+        <h1 id="console-title">实时变声</h1>
+        <button class="top-link setup-warning assets-warning" id="assets-guide" type="button" hidden>
+          <svg><use href="#i-alert"/></svg>基础模型缺失<span class="top-link-action">查看安装方法</span>
+        </button>
+      </div>
+      <div class="console-main" id="console-main" data-state="idle">
+        <div class="power-stage">
+          <span class="power-axis" aria-hidden="true"></span>
+          <span class="power-orbit" aria-hidden="true"></span>
+          <span class="power-halo" aria-hidden="true"></span>
+          <button class="power" id="power" type="button" aria-label="启动变声" aria-pressed="false" disabled><svg><use href="#i-power"/></svg></button>
+        </div>
+        <p class="power-caption" id="power-caption" aria-live="polite">正在连接…</p>
+        <div class="current-voice" id="current-voice">未选择音色</div>
+      </div>
+      <section class="signal" aria-label="实时音频电平">
+        <div class="waveform"><canvas id="waveform" aria-hidden="true"></canvas></div>
+        <div class="meters">
+          <div class="meter">
+            <div class="meter-label"><svg><use href="#i-mic"/></svg>输入<output id="in-db">— dB</output></div>
+            <div class="meter-bars" id="in-bars" aria-hidden="true"></div>
+          </div>
+          <div class="meter">
+            <div class="meter-label"><svg><use href="#i-speaker"/></svg>输出<output id="out-db">— dB</output></div>
+            <div class="meter-bars" id="out-bars" aria-hidden="true"></div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <aside class="controls" aria-labelledby="controls-title">
+      <div class="control-scroll">
+        <h2 class="control-heading" id="controls-title">调节</h2>
+        <div class="control-group effects">
+          <div class="slider-control">
+            <div class="slider-label"><label for="pitch">变调</label><output id="pitch-value" for="pitch">0 半音</output></div>
+            <div class="slider-track"><input type="range" id="pitch" min="-12" max="12" step="1" value="0" title="双击恢复默认"><span class="slider-bubble" aria-hidden="true"></span></div>
+            <div class="pitch-presets"><button type="button" data-pitch="12">男→女 <span>+12</span></button><button type="button" data-pitch="-12">女→男 <span>−12</span></button></div>
+          </div>
+          <div class="slider-control" id="index-control">
+            <div class="slider-label"><label for="index-rate">音色贴合</label><output id="index-rate-value" for="index-rate">0.50</output></div>
+            <div class="slider-track"><input type="range" id="index-rate" min="0" max="1" step="0.05" value="0.5" title="双击恢复默认" aria-describedby="index-note" disabled><span class="slider-bubble" aria-hidden="true"></span></div>
+            <p class="control-hint" id="index-note">当前音色无检索索引</p>
+          </div>
+          <div class="slider-control">
+            <div class="slider-label"><label for="gate-db">噪声门</label><output id="gate-db-value" for="gate-db">−45 dB</output></div>
+            <div class="slider-track"><input type="range" id="gate-db" min="-60" max="-20" step="1" value="-45" title="双击恢复默认"><span class="slider-bubble" aria-hidden="true"></span></div>
+          </div>
+          <fieldset class="latency">
+            <legend>延迟档位</legend>
+            <div class="segmented" role="group" aria-label="延迟档位">
+              <button type="button" data-latency="low" aria-pressed="false">低延迟</button>
+              <button type="button" data-latency="balanced" aria-pressed="true">均衡</button>
+              <button type="button" data-latency="high" aria-pressed="false">高质量</button>
+            </div>
+          </fieldset>
+        </div>
+        <section class="routing" aria-labelledby="routing-title">
+          <div class="panel-heading routing-heading">
+            <h2 class="control-heading" id="routing-title">音频设备</h2>
+            <button class="icon-button" id="refresh-devices" type="button" aria-label="刷新设备" title="刷新设备"><svg><use href="#i-refresh"/></svg></button>
+          </div>
+          <div class="device-field"><label for="input-device">麦克风</label><select id="input-device"></select></div>
+          <div class="device-field"><label for="output-device">输出到</label><select id="output-device"></select></div>
+          <div class="switch-field"><label for="monitor">自己监听</label><input class="switch" type="checkbox" id="monitor" role="switch" aria-describedby="monitor-tip"></div>
+          <div class="monitor-options" id="monitor-options">
+            <div class="device-field"><label for="monitor-device">监听设备</label><select id="monitor-device"></select></div>
+            <p class="control-hint" id="monitor-tip" hidden>请佩戴耳机，以免产生回声。</p>
+            <div class="slider-control" id="monitor-volume-control" hidden>
+              <div class="slider-label"><label for="monitor-volume">监听音量</label><output id="monitor-volume-value" for="monitor-volume">60%</output></div>
+              <div class="slider-track"><input type="range" id="monitor-volume" min="0" max="1" step="0.05" value="0.6" title="双击恢复默认"><span class="slider-bubble" aria-hidden="true"></span></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="statusbar">
+    <div class="status-left"><span class="status-dot" id="status-dot" data-state="idle"></span><span id="status-text" aria-live="polite">正在连接</span></div>
+    <div class="status-stats" id="status-stats" aria-label="推理耗时与总延迟">推理 — ms <span>·</span> 总延迟约 — ms</div>
+    <div class="status-right"><span class="performance-flag" id="performance-flag" hidden>性能不足</span><span class="backend" id="backend"><svg><use href="#i-chip"/></svg><span>推理后端待启动</span></span></div>
+  </footer>
+
+  <div class="toast-stack" id="toasts" aria-live="polite" aria-atomic="false"></div>
+  <dialog class="drawer" id="settings" aria-labelledby="settings-title">
+    <div class="drawer-inner">
+      <div class="dialog-heading"><h2 id="settings-title">设置</h2><button class="icon-button" id="settings-close" type="button" aria-label="关闭设置"><svg><use href="#i-close"/></svg></button></div>
+      <section class="settings-section"><h3>推理设备</h3><label for="gpu-index">显卡选择</label><select id="gpu-index"></select><p class="control-hint">更换显卡时会重新加载模型。</p></section>
+      <section class="settings-section"><h3>模型与转换组件</h3><div class="settings-line"><span>基础模型</span><strong id="base-status">正在检查</strong></div><div class="settings-line"><span>转换组件</span><strong id="converter-status">正在检查</strong></div><button class="secondary-button" type="button" data-open-guide>查看安装方法<svg><use href="#i-arrow"/></svg></button></section>
+      <section class="settings-section"><h3>日志</h3><p class="log-path" id="logs-path"></p><button class="secondary-button" id="open-logs" type="button">打开日志目录<svg><use href="#i-arrow"/></svg></button></section>
+      <section class="settings-section about"><h3>关于</h3><div class="settings-line"><span>MaskVox</span><strong id="version"></strong></div><p>Windows 实时 AI 变声器。请使用来源合法的音色。</p></section>
+    </div>
+  </dialog>
+  <dialog class="modal" id="modal" aria-labelledby="modal-title">
+    <form id="modal-form">
+      <div class="dialog-heading"><h2 id="modal-title"></h2><button class="icon-button" id="modal-close" type="button" aria-label="关闭对话框"><svg><use href="#i-close"/></svg></button></div>
+      <p id="modal-message"></p>
+      <label class="modal-field" id="modal-field" hidden>音色名称<input id="modal-input" name="name" type="text" maxlength="80" autocomplete="off"></label>
+      <div class="modal-actions"><button class="secondary-button" id="modal-cancel" type="button">取消</button><button class="primary-button" id="modal-confirm" type="submit">确认</button></div>
+    </form>
+  </dialog>
+
+  <template id="voice-template">
+    <article class="voice-card">
+      <button class="voice-select" type="button" aria-pressed="false">
+        <span class="voice-avatar" aria-hidden="true"></span>
+        <span class="voice-copy"><strong class="voice-name"></strong><span class="voice-meta"></span></span>
+      </button>
+      <button class="icon-button voice-more" type="button" aria-expanded="false" aria-label="音色操作"><svg><use href="#i-more"/></svg></button>
+      <div class="voice-menu" hidden>
+        <button data-action="rename" type="button"><svg><use href="#i-edit"/></svg>重命名</button>
+        <button data-action="export" type="button"><svg><use href="#i-export"/></svg>导出音色包</button>
+        <button data-action="delete" class="danger-action" type="button"><svg><use href="#i-trash"/></svg>删除</button>
+      </div>
+    </article>
+  </template>
+  <template id="job-template">
+    <article class="job-card">
+      <div class="job-heading"><strong class="job-file"></strong><button class="icon-button cancel-job" type="button" aria-label="取消导入" title="取消导入"><svg><use href="#i-close"/></svg></button></div>
+      <div class="job-stage"></div><progress max="1" value="0" aria-label="转换进度"></progress>
+    </article>
+  </template>
+</body>
+</html>
