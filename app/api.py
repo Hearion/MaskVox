@@ -129,12 +129,22 @@ class Api:
         before = self._settings.snapshot()
         if all(before.get(key) == value for key, value in changes.items()):
             return before
-        updated = self._settings.update(**changes)
         active = self._engine.state in {"loading", "running"}
         if restart and active:
             self._engine.stop()
-            self._start_locked(updated)
-        elif active:
+            try:
+                updated = self._settings.update(**changes)
+                self._start_locked(updated)
+            except Exception:
+                try:
+                    self._settings.update(**{key: before[key] for key in changes})
+                    self._start_locked(before)
+                except Exception:
+                    LOGGER.exception("恢复之前的变声设置失败")
+                raise
+            return updated
+        updated = self._settings.update(**changes)
+        if active:
             self._engine.update_params(updated)
         return updated
 

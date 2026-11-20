@@ -157,10 +157,14 @@ class Imports:
             self._check(aborted)
             if last_id is not None:
                 self._on_imported(last_id)
-                terminal = "done", 1, {"voice_id": last_id, "message": (
-                    f"已导入 {successes} 个音色" if error is None
-                    else f"已导入 {successes} 个音色。部分文件失败：{error}"
-                )}
+                terminal = "done", 1, {
+                    "voice_id": last_id,
+                    "partial": error is not None,
+                    "message": (
+                        f"已导入 {successes} 个音色" if error is None
+                        else f"已导入 {successes} 个音色。部分文件失败：{error}"
+                    ),
+                }
             else:
                 code = "converter_missing" if isinstance(error, converter.ConverterMissing) else "import_failed"
                 terminal = "error", 0, {"message": str(error or "没有可导入的音色。"), "code": code}

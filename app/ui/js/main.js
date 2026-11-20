@@ -139,6 +139,7 @@
     let openingPicker = false;
     let togglingMonitor = false;
     let steadyMeters = 0;
+    let statusRevision = 0;
 
     async function safeCall(method, ...args) {
       try {
@@ -158,8 +159,12 @@
       refreshing = (async () => {
         do {
           refreshAgain = false;
+          const revision = statusRevision;
           const state = await safeCall('get_state');
-          if (state) store.update({ ...state, connected: true });
+          if (state) {
+            const engine = statusRevision === revision ? state.engine : store.read().engine;
+            store.update({ ...state, engine, connected: true });
+          }
         } while (refreshAgain);
       })();
       try {
@@ -353,9 +358,10 @@
           if (code === 'converter_missing') void promptConverter();
           else notify(message || '导入失败，请查看日志', 'error');
         } else if (stage === 'cancelled') {
-          notify('已取消导入');
+          notify(message || '已取消导入');
         } else if (stage === 'done') {
           if (voiceId) freshVoices.add(voiceId);
+          notify(message || '音色已导入', payload.partial ? 'warning' : 'success');
           void refreshState();
         }
       }
@@ -377,6 +383,7 @@
           }
           break;
         case 'status':
+          statusRevision++;
           store.update({ engine: payload, ...(payload.state === 'loading' ? { indexUnavailable: false } : {}) });
           if (payload.state === 'error') notify(payload.message || '变声引擎发生错误', 'error');
           break;
