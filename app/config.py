@@ -38,6 +38,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "echo": 0,
     "reverb": 0,
     "gate_db": -50,
+    "delay_ms": 30,
     "monitor": False,
     "monitor_volume": 0.6,
     "onboarding_dismissed": False,
@@ -56,7 +57,7 @@ def _valid_setting(key: str, value: Any) -> bool:
         return type(value) is bool
     limits = {
         "pitch": (-12, 12), "formant": (-12, 12), "echo": (0, 1), "reverb": (0, 1),
-        "gate_db": (-60, -20), "monitor_volume": (0, 1),
+        "gate_db": (-60, -20), "monitor_volume": (0, 1), "delay_ms": (10, 1000),
     }
     minimum, maximum = limits[key]
     return type(value) in (int, float) and minimum <= value <= maximum and math.isfinite(value)

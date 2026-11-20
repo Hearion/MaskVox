@@ -9,7 +9,8 @@ import sounddevice as sd
 from .ringbuffer import RingBuffer
 
 SAMPLE_RATE = 48000
-# Extra queued output that absorbs scheduling and inference jitter.
+# Default amount of queued output. It absorbs scheduling jitter, and the
+# user can raise it to hold the voice back on purpose.
 JITTER_MS = 30
 
 
@@ -43,12 +44,12 @@ def timer_resolution():
 class AudioStreams:
     """Own one input and separate output clocks, with copy-only callbacks."""
 
-    def __init__(self, devices: dict, block_size: int) -> None:
+    def __init__(self, devices: dict, block_size: int, delay_ms: float = JITTER_MS) -> None:
         self._devices = devices
+        prefill = block_size + round(SAMPLE_RATE * delay_ms / 1000)
         # Audio queued beyond this is dropped to catch up with real time.
-        self.limit = block_size + round(SAMPLE_RATE * 3 * JITTER_MS / 1000)
+        self.limit = prefill + round(SAMPLE_RATE * 0.06)
         self._silence = np.zeros(block_size, dtype=np.float32)
-        prefill = block_size + round(SAMPLE_RATE * JITTER_MS / 1000)
         self._startup_silence = np.zeros(prefill, dtype=np.float32)
         self.input = RingBuffer(self.limit * 2)
         self.output = RingBuffer(self.limit * 2)

@@ -90,6 +90,36 @@ class VocoderTests(unittest.TestCase):
         output = _run(Vocoder(), _voice(150), {"tune": True})
         self.assertAlmostEqual(_fundamental(output), 146.83, delta=2.5)
 
+    def test_breath_adds_noise_up_high_and_keeps_the_pitch(self) -> None:
+        signal = _voice(120, formant=2500)
+        plain = _run(Vocoder(), signal, {"pitch": 9})
+        breathy = _run(Vocoder(), signal, {"pitch": 9, "breath": 0.5})
+        self.assertAlmostEqual(_fundamental(breathy), 120 * 2**0.75, delta=4)
+
+        def between_harmonics(output: np.ndarray) -> float:
+            hz, magnitude = _spectrum(output)
+            pitch = 120 * 2**0.75
+            gap = (np.abs(((hz + pitch / 2) % pitch) - pitch / 2) > 0.3 * pitch) & (hz > 2500) & (hz < 6000)
+            return float(np.mean(magnitude[gap] ** 2))
+
+        self.assertGreater(between_harmonics(breathy), 20 * between_harmonics(plain))
+        self.assertAlmostEqual(float(np.std(breathy[RATE // 2 :])) / float(np.std(plain[RATE // 2 :])), 1, delta=0.25)
+
+    def test_intonation_widens_pitch_movement(self) -> None:
+        low, high = _voice(110, 1.5), _voice(132, 1.5)
+        signal = np.concatenate((low, high, low, high))
+        for amount, expected in ((0.0, 132 / 110), (0.5, (132 / 110) ** 1.5)):
+            output = _run(Vocoder(), signal, {"pitch": 9, "intonation": amount})
+            third, fourth = output[2 * len(low) : 3 * len(low)], output[3 * len(low) :]
+            self.assertAlmostEqual(_fundamental(fourth) / _fundamental(third), expected, delta=0.04)
+
+    def test_feminine_band_drops_chest_rumble(self) -> None:
+        signal = (0.2 * np.random.default_rng(3).standard_normal(RATE)).astype(np.float32)[: RATE // BLOCK * BLOCK]
+        hz, magnitude = _spectrum(_run(Vocoder(), signal, {"band": "feminine"}))
+        middle = magnitude[(hz > 500) & (hz < 2000)].mean()
+        self.assertLess(magnitude[hz < 90].mean(), 0.05 * middle)
+        self.assertGreater(magnitude[(hz > 5500) & (hz < 9000)].mean(), 1.3 * middle)
+
     def test_band_limits_remove_highs(self) -> None:
         signal = (0.2 * np.random.default_rng(0).standard_normal(RATE)).astype(np.float32)[: RATE // BLOCK * BLOCK]
         hz, magnitude = _spectrum(_run(Vocoder(), signal, {"band": "phone"}))

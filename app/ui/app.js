@@ -12,6 +12,7 @@
     reverb: percent,
     monitor_volume: percent,
     gate_db: (value) => (value <= -60 ? '关闭' : `−${Math.abs(value)} dB`),
+    delay_ms: (value) => `${value} ms`,
   };
 
   function signed(value) { return `${value > 0 ? '+' : '−'}${Math.abs(value)}`; }
@@ -256,10 +257,13 @@
     });
     for (const slider of document.querySelectorAll('.slider')) {
       const input = slider.querySelector('input');
+      // A slider that restarts the audio streams sends its value on release only.
+      const onRelease = slider.dataset.commit === 'release';
       input.addEventListener('input', () => {
         paintSlider(slider, Number(input.value));
-        queueParam(slider.dataset.param, Number(input.value));
+        if (!onRelease) queueParam(slider.dataset.param, Number(input.value));
       });
+      if (onRelease) input.addEventListener('change', () => queueParam(slider.dataset.param, Number(input.value)));
     }
     for (const select of document.querySelectorAll('select[data-device]')) {
       select.addEventListener('change', async () => {
@@ -308,7 +312,7 @@
     const presets = names.map(([id, name, hint, icon, hue]) => ({ id, name, hint, icon, hue }));
     const settings = {
       input_id: 1, output_id: 4, monitor_id: 3, preset: 'woman', pitch: 9, formant: 3, echo: 0, reverb: 0,
-      gate_db: -50, monitor: false, monitor_volume: 0.6, onboarding_dismissed: false,
+      gate_db: -50, delay_ms: 30, monitor: false, monitor_volume: 0.6, onboarding_dismissed: false,
     };
     const devices = {
       inputs: [{ id: 1, name: '麦克风 (HyperX Cloud II)' }, { id: 2, name: '麦克风阵列 (Realtek Audio)' }],

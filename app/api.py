@@ -18,7 +18,7 @@ from .events import Events
 
 LOGGER = logging.getLogger(__name__)
 DEVICE_SETTINGS = {"input_id": "inputs", "output_id": "outputs", "monitor_id": "outputs"}
-NUMERIC_PARAMETERS = {**ADJUSTABLE, "gate_db": (-60, -20, 1), "monitor_volume": (0, 1, 0.01)}
+NUMERIC_PARAMETERS = {**ADJUSTABLE, "gate_db": (-60, -20, 1), "monitor_volume": (0, 1, 0.01), "delay_ms": (10, 1000, 10)}
 ACTIVE = {"loading", "running"}
 
 
@@ -110,7 +110,7 @@ class Api:
         if settings["input_id"] is None or settings["output_id"] is None:
             raise ApiError("请选择麦克风和输出设备，然后重试。")
         devices = {key: settings[key] for key in DEVICE_SETTINGS}
-        self._engine.start(devices=devices, params=self._params(settings))
+        self._engine.start(devices=devices, params=self._params(settings), delay_ms=settings["delay_ms"])
 
     def _replace_settings(self, restart: bool = False, **changes: Any) -> dict:
         before = self._settings.snapshot()
@@ -214,7 +214,8 @@ class Api:
                     raise ApiError("请先选择与主输出不同的监听设备。")
             else:
                 raise ApiError("不支持该设置项。")
-            return self._replace_settings(**{name: value})
+            # The delay is the amount of queued audio, which is set when the streams open.
+            return self._replace_settings(restart=name == "delay_ms", **{name: value})
 
     @response
     def dismiss_onboarding(self) -> dict:

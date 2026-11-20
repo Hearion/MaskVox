@@ -44,11 +44,18 @@ class AppTests(unittest.TestCase):
             params = api._engine.update_params.call_args.args[0]
             self.assertEqual((params["pitch"], params["mode"], params["monitor"]), (-9, "normal", False))
             api._engine.stop.assert_not_called()
+            api._settings.update(input_id=1, output_id=2)
 
             # A slider keeps the effect and changes one value.
             settings = api.set_param("pitch", 3.2)["data"]
             self.assertEqual((settings["preset"], settings["pitch"]), ("giant", 3.0))
             self.assertFalse(api.select_preset("nope")["ok"])
+
+            # The delay reopens the audio streams with the new amount queued.
+            self.assertEqual(api.set_param("delay_ms", 204)["data"]["delay_ms"], 200)
+            api._engine.stop.assert_called_once_with()
+            self.assertEqual(api._engine.start.call_args.kwargs["delay_ms"], 200)
+            self.assertFalse(api.set_param("delay_ms", 5)["ok"])
             self.assertFalse(api.set_param("pitch", 40)["ok"])
             self.assertFalse(api.set_param("mode", "robot")["ok"])
 

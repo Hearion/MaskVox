@@ -41,7 +41,7 @@ class RealtimeEngine:
         self.message = message
         self._emit("status", {"state": state, "message": message})
 
-    def start(self, *, devices: dict, params: dict) -> None:
+    def start(self, *, devices: dict, params: dict, delay_ms: float = JITTER_MS) -> None:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 raise RuntimeError("引擎正在运行或停止，请稍后重试")
@@ -49,7 +49,7 @@ class RealtimeEngine:
             self._cancelled.clear()
             self._status("loading", "正在连接音频设备…")
             self._thread = threading.Thread(
-                target=self._run, args=(dict(devices),), name="maskvox-audio", daemon=True,
+                target=self._run, args=(dict(devices), delay_ms), name="maskvox-audio", daemon=True,
             )
             self._thread.start()
 
@@ -69,15 +69,15 @@ class RealtimeEngine:
         # Publish a new object. The worker reads it once for each block.
         self._params = dict(params)
 
-    def _run(self, devices: dict) -> None:
+    def _run(self, devices: dict, delay_ms: float) -> None:
         error = ""
         try:
             with audio_apartment(), timer_resolution():
-                streams = AudioStreams(devices, BLOCK)
+                streams = AudioStreams(devices, BLOCK, delay_ms)
                 try:
                     streams.start()
                     self._status("running", "正在变声")
-                    self._loop(streams, VoiceChain())
+                    self._loop(streams, VoiceChain(), delay_ms)
                 finally:
                     streams.close()
         except Exception as exc:
@@ -87,7 +87,7 @@ class RealtimeEngine:
         finally:
             self._status("error" if error else "idle", error)
 
-    def _loop(self, streams: AudioStreams, chain: VoiceChain) -> None:
+    def _loop(self, streams: AudioStreams, chain: VoiceChain, delay_ms: float) -> None:
         block = np.empty(BLOCK, dtype=np.float32)
         monitoring = False
         process_ms = 0.0
@@ -133,7 +133,7 @@ class RealtimeEngine:
                 self._emit("meter", {
                     "in_db": round(in_db, 1), "out_db": round(out_db, 1),
                     "process_ms": round(process_ms, 2),
-                    "latency_ms": round(_BLOCK_MS + JITTER_MS + chain.delay_ms + streams.device_latency_ms),
+                    "latency_ms": round(_BLOCK_MS + delay_ms + chain.delay_ms + streams.device_latency_ms),
                     "underruns": streams.underruns,
                 })
                 next_emit = now + _EMIT_INTERVAL

@@ -8,20 +8,26 @@ from numpy.lib.stride_tricks import sliding_window_view
 SAMPLE_RATE = 48000
 FFT = 2048
 HOP = 512
-BINS = FFT // 2 + 1
+# Each frame is zero-padded before the transform. The finer bin spacing lets
+# a shifted peak land closer to its true frequency, which removes roughness.
+_SIZE = 2 * FFT
+BINS = _SIZE // 2 + 1
 # A sample leaves the overlap-add buffer this long after it enters.
 LATENCY = FFT - HOP
 
-_OVERSAMPLING = FFT // HOP
 _TWO_PI = 2 * np.pi
 _WINDOW = np.hanning(FFT + 1)[:-1].astype(np.float32)
 # Squared Hann windows at 75 % overlap add up to 1.5.
 _SYNTHESIS = _WINDOW / 1.5
 _BIN = np.arange(BINS)
-_EXPECTED = _TWO_PI * _BIN / _OVERSAMPLING
+# Phase advance over one hop for a sinusoid that sits one bin up.
+_HOP_PHASE = _TWO_PI * HOP / _SIZE
+_EXPECTED = _HOP_PHASE * _BIN
 # Zero phase puts each frame's pulse at sample 0, where the window is zero.
-# Alternating signs move it to the middle of the frame.
-_CENTERED = np.where(_BIN % 2, -1.0, 1.0)
+# A linear phase moves it to the middle of the frame.
+_CENTERED = np.exp(-1j * _TWO_PI * _BIN * (FFT // 2) / _SIZE)
+_PEAK_REACH = 3
+_ENVELOPE_PASSES = 4
 # Quefrencies below the lifter describe the vocal tract, the rest the pitch.
 # A longer lifter resolves formants better but must stay under the pitch
 # period, so it follows the speaker's pitch between these bounds.
@@ -32,7 +38,7 @@ _SCALE_STEPS = np.array([0, 2, 4, 5, 7, 9, 11, 12])
 
 
 def _band(low: float, high: float) -> np.ndarray:
-    hz = _BIN * SAMPLE_RATE / FFT
+    hz = _BIN * SAMPLE_RATE / _SIZE
     mask = np.ones(BINS)
     if low:
         mask *= np.clip((hz - 0.7 * low) / (0.3 * low), 0, 1)
@@ -41,22 +47,40 @@ def _band(low: float, high: float) -> np.ndarray:
     return mask * mask * (3 - 2 * mask)
 
 
+def _ramp(low: float, high: float) -> np.ndarray:
+    position = np.clip((_BIN * SAMPLE_RATE / _SIZE - low) / (high - low), 0, 1)
+    return position * position * (3 - 2 * position)
+
+
 BANDS = {
     "full": None,
+    # No chest rumble below a woman's pitch, and a little more air on top.
+    "feminine": _band(150, 0) * (1 + 0.5 * _ramp(2500, 5000)),
     "phone": _band(300, 3400),
     "radio": _band(500, 2600),
     "muffled": _band(0, 700),
 }
 MODES = ("normal", "robot", "whisper")
+# Breath noise replaces part of the harmonics above the first formants.
+_BREATH_BAND = _ramp(1500, 4000)
+_BREATH_SMOOTHING = np.ones(25) / 25
+_PITCH_MEMORY = 1 - np.exp(-HOP / (2.0 * SAMPLE_RATE))
 
 
 def _envelope(magnitude: np.ndarray, lifter: int) -> np.ndarray:
     """Smooth spectral envelope from the low part of the cepstrum."""
     # Without a floor the gaps between harmonics drag the envelope down.
     floor = max(1e-7, 1e-3 * float(magnitude.max()))
-    cepstrum = np.fft.irfft(np.log(np.maximum(magnitude, floor)))
-    cepstrum[lifter : -lifter + 1] = 0
-    return np.exp(np.fft.rfft(cepstrum).real)
+    target = np.log(np.maximum(magnitude, floor))
+    smooth = target
+    # Plain smoothing averages peaks with the gaps between harmonics and
+    # lands below the peaks. Raising the input to the last estimate and
+    # smoothing again pulls the envelope up onto them.
+    for _ in range(_ENVELOPE_PASSES):
+        cepstrum = np.fft.irfft(np.maximum(target, smooth))
+        cepstrum[lifter : -lifter + 1] = 0
+        smooth = np.fft.rfft(cepstrum).real
+    return np.exp(smooth)
 
 
 def _pitch(magnitude: np.ndarray) -> float:
@@ -87,6 +111,8 @@ class Vocoder:
         self._last_phase = np.zeros(BINS)
         self._rotation = np.zeros(BINS)
         self._tune = 1.0
+        self._bend = 1.0
+        self._usual_pitch = 0.0
         self._lifter = _DEFAULT_LIFTER
         self._random = np.random.default_rng()
 
@@ -100,13 +126,13 @@ class Vocoder:
         phases, which is what keeps a shifted voice from sounding hollow.
         Each bin trades the envelope where it was for the one where it lands.
         """
-        padded = np.pad(magnitude, 2)
-        peaks = np.flatnonzero((magnitude == sliding_window_view(padded, 5).max(axis=1)) & (magnitude > 0))
+        neighbourhood = sliding_window_view(np.pad(magnitude, _PEAK_REACH), 2 * _PEAK_REACH + 1)
+        peaks = np.flatnonzero((magnitude == neighbourhood.max(axis=1)) & (magnitude > 0))
         if not len(peaks):
             return np.zeros(BINS, dtype=np.complex128)
         region = np.searchsorted((peaks[:-1] + peaks[1:] + 1) // 2, _BIN, side="right")
         offset = frequency[peaks] * (ratio - 1)
-        rotation = (self._rotation[peaks] + offset * (_TWO_PI / _OVERSAMPLING))[region] % _TWO_PI
+        rotation = (self._rotation[peaks] + offset * _HOP_PHASE)[region] % _TWO_PI
         self._rotation = rotation
         target = _BIN + np.rint(offset).astype(np.int64)[region]
         audible = (target >= 0) & (target < BINS)
@@ -120,15 +146,37 @@ class Vocoder:
         gain = np.sqrt(float(np.sum(magnitude**2)) / energy) if energy > 0 else 1.0
         return output * min(max(gain, 0.25), 4.0)
 
+    def _intonation(self, voiced: float, amount: float) -> float:
+        """Widen the rise and fall of the speaker's pitch around its usual value.
+
+        A man's speech melody moves less than a woman's. Shifted up
+        unchanged it sounds flat.
+        """
+        if voiced:
+            note = float(np.log(voiced))
+            self._usual_pitch = self._usual_pitch or note
+            self._usual_pitch += _PITCH_MEMORY * (note - self._usual_pitch)
+            wanted = float(np.clip(np.exp(amount * (note - self._usual_pitch)), 0.8, 1.25))
+            # Smoothing keeps a single misread pitch from yanking the voice.
+            self._bend += 0.3 * (wanted - self._bend)
+        return self._bend
+
+    def _breathe(self, output: np.ndarray, amount: float) -> np.ndarray:
+        """Trade some of the upper harmonics for noise at the same loudness."""
+        power = output.real**2 + output.imag**2
+        local = np.sqrt(np.convolve(power, _BREATH_SMOOTHING, mode="same"))
+        noise = local * np.exp(1j * self._random.uniform(0, _TWO_PI, BINS))
+        return output * (1 - 0.4 * amount * _BREATH_BAND) + noise * (amount * _BREATH_BAND)
+
     def _frame(self, params: dict) -> np.ndarray:
-        spectrum = np.fft.rfft(self._input * _WINDOW)
+        spectrum = np.fft.rfft(self._input * _WINDOW, _SIZE)
         magnitude = np.abs(spectrum)
         phase = np.angle(spectrum)
         delta = phase - self._last_phase - _EXPECTED
         self._last_phase = phase
         delta -= _TWO_PI * np.round(delta / _TWO_PI)
         # Each bin's measured frequency, in bins.
-        frequency = _BIN + delta * _OVERSAMPLING / _TWO_PI
+        frequency = _BIN + delta / _HOP_PHASE
 
         mode = params.get("mode", "normal")
         ratio = 2 ** (float(params.get("pitch", 0)) / 12)
@@ -147,6 +195,9 @@ class Vocoder:
                 if tune:
                     self._tune = _snap(voiced * ratio) / (voiced * ratio)
             ratio *= self._tune
+            intonation = float(params.get("intonation", 0))
+            if intonation > 0 and mode == "normal":
+                ratio *= self._intonation(voiced, intonation)
             envelope = _envelope(magnitude, self._lifter)
             shaped = envelope if formant == 1 else np.interp(_BIN / formant, _BIN, envelope, right=0)
             if mode != "normal":
@@ -160,11 +211,14 @@ class Vocoder:
                 output = 1.3 * shaped * np.exp(1j * self._random.uniform(0, _TWO_PI, BINS))
             else:
                 output = self._shift(spectrum, magnitude, frequency, ratio, envelope, shaped)
+                breath = float(params.get("breath", 0))
+                if breath > 0:
+                    output = self._breathe(output, breath)
 
         mask = BANDS[params.get("band", "full")]
         if mask is not None:
             output = output * mask
-        return np.fft.irfft(output) * _SYNTHESIS
+        return np.fft.irfft(output)[:FFT] * _SYNTHESIS
 
     def process(self, block: np.ndarray, params: dict) -> np.ndarray:
         if len(block) % HOP:

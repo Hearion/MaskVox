@@ -122,6 +122,11 @@
         <input type="range" min="-60" max="-20" step="1" value="-50">
       </label>
       <p class="field-hint">不说话时自动静音。字头被吞就往左调，环境吵就往右调。</p>
+      <label class="slider" data-param="delay_ms" data-commit="release">
+        <span class="slider-row"><span>延迟时间</span><output></output></span>
+        <input type="range" min="10" max="1000" step="10" value="30">
+      </label>
+      <p class="field-hint">声音在送出前等待的时间。越小越跟手，太小会断续；调大可以故意让声音晚一步出来。</p>
       <div class="drawer-actions">
         <button type="button" class="button" id="refresh-devices">刷新设备</button>
         <button type="button" class="button" id="open-logs">打开日志</button>

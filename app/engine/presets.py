@@ -9,6 +9,7 @@ ADJUSTABLE = {"pitch": (-12, 12, 0.5), "formant": (-12, 12, 0.5), "echo": (0, 1,
 _BASE = {
     "pitch": 0, "formant": 0, "echo": 0, "reverb": 0,
     "mode": "normal", "band": "full", "tune": False, "ring_hz": 0, "tremolo": 0, "drive": 0,
+    "breath": 0, "intonation": 0,
 }
 
 
@@ -21,8 +22,10 @@ def _preset(identifier: str, name: str, hint: str, icon: str, hue: int, **params
 
 PRESETS = (
     _preset("original", "原声", "不做处理", "🎙️", 210),
-    _preset("woman", "女声", "男声变女声", "👩", 330, pitch=9, formant=3),
-    _preset("loli", "萝莉", "又细又甜", "🎀", 345, pitch=12, formant=5),
+    _preset("woman", "女声", "男声变女声", "👩", 330, pitch=9, formant=3,
+            breath=0.35, intonation=0.3, band="feminine"),
+    _preset("loli", "萝莉", "又细又甜", "🎀", 345, pitch=12, formant=5,
+            breath=0.25, intonation=0.4, band="feminine"),
     _preset("boy", "正太", "稚气少年", "🧒", 190, pitch=5, formant=2),
     _preset("man", "大叔", "女声变男声", "🧔", 28, pitch=-5, formant=-2.5),
     _preset("giant", "巨人", "低沉厚重", "🗿", 160, pitch=-9, formant=-5, reverb=0.15),
