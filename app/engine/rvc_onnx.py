@@ -7,6 +7,9 @@ import numpy as np
 from .ort_session import create_session
 
 _REQUIRED_INPUTS = {"phone", "phone_lengths", "pitch", "pitchf", "ds", "rnd"}
+# RVC samples its latent prior at this scale. The exported graph takes the
+# noise as given, and full-scale noise makes the voice rough and unstable.
+_NOISE_SCALE = np.float32(0.66666)
 
 
 class RvcModel:
@@ -45,7 +48,9 @@ class RvcModel:
             "pitch": coarse[None, :],
             "pitchf": pitch[None, :],
             "ds": self.speaker,
-            "rnd": self.random.standard_normal((1, self.noise_dimension, self.frames), dtype=np.float32),
+            "rnd": _NOISE_SCALE * self.random.standard_normal(
+                (1, self.noise_dimension, self.frames), dtype=np.float32,
+            ),
         }
         if self.source_noise:
             inputs["source_noise"] = self.random.standard_normal(

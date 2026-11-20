@@ -9,9 +9,10 @@ from pathlib import Path
 
 import numpy as np
 
-from app.audio.stream import AudioStreams, SAMPLE_RATE, audio_apartment
+from app.audio.stream import JITTER_MS, AudioStreams, SAMPLE_RATE, audio_apartment, timer_resolution
 
 from .content_encoder import ContentEncoder
+from .dynamics import InputLeveler, NoiseGate, frame_power, speech_power
 from .f0_rmvpe import HOP, RMVPE_MULTIPLE, RMVPE, f0_to_coarse
 from .index import VoiceIndex
 from .ort_session import DML, available_providers
@@ -32,14 +33,6 @@ _LOOKAHEAD_FRAMES = _CROSSFADE_FRAMES - _OVERLAP_FRAMES
 _EMIT_INTERVAL = 0.1
 
 Emit = Callable[[str, dict], None]
-
-
-def apply_gate(block: np.ndarray, threshold: float) -> np.ndarray:
-    if threshold <= -60:
-        return block
-    frames = block.reshape(-1, _IO_HOP)
-    mean_power = np.mean(frames * frames, axis=1)
-    return np.where((mean_power >= 10 ** (threshold / 10))[:, None], frames, 0).reshape(-1)
 
 
 def _level(samples: np.ndarray) -> float:
@@ -67,6 +60,8 @@ class RvcPipeline:
         self._input_resampler = InputResampler()
         self._output_resampler = OutputResampler(self._voice.sample_rate)
         self._sola = Sola(self.block_size, _OVERLAP_FRAMES * _IO_HOP, _SEARCH_FRAMES * _IO_HOP)
+        self._gate = NoiseGate()
+        self._leveler = InputLeveler()
         self._emit = emit
         self._index = None
         if (voice_dir / "model.index").is_file():
@@ -85,7 +80,10 @@ class RvcPipeline:
         self.startup_delay_ms = 0.0
 
     def _roll_audio(self, block: np.ndarray, threshold: float) -> None:
-        new_audio = self._input_resampler.process(apply_gate(block, threshold))
+        power = frame_power(block)
+        self._gate.detect(power, threshold)
+        leveled = self._leveler.process(block, power, speech_power(threshold))
+        new_audio = self._input_resampler.process(leveled)
         shift = len(new_audio)
         self._audio[:-shift] = self._audio[shift:]
         self._audio[-shift:] = new_audio
@@ -118,7 +116,7 @@ class RvcPipeline:
     def process(self, block: np.ndarray, params: dict) -> np.ndarray:
         if block.shape != (self.block_size,):
             raise ValueError("输入音频块长度与延迟档位不匹配")
-        self._roll_audio(block, float(params.get("gate_db", -45)))
+        self._roll_audio(block, float(params.get("gate_db", -50)))
         features = self._features(float(params.get("index_rate", 0.5)))
         pitches = self._pitches(float(params.get("pitch", 0)))
         generated = self._voice.synthesize(features, pitches, f0_to_coarse(pitches))
@@ -134,7 +132,7 @@ class RvcPipeline:
         window = resampled[filter_history * _IO_HOP : -_LOOKAHEAD_FRAMES * _IO_HOP]
         if not np.isfinite(window).all():
             raise ValueError("音色模型生成了无效音频，请尝试重新转换音色或切换到 CPU")
-        return np.clip(self._sola.join(window), -1, 1)
+        return np.clip(self._gate.apply(self._sola.join(window)), -1, 1)
 
     def warmup(self, cancelled: threading.Event, params: dict) -> None:
         silence = np.zeros(self.block_size, dtype=np.float32)
@@ -146,6 +144,8 @@ class RvcPipeline:
             self.startup_delay_ms = (time.perf_counter() - started) * 1000
         self._input_resampler = InputResampler()
         self._sola = Sola(self.block_size, _OVERLAP_FRAMES * _IO_HOP, _SEARCH_FRAMES * _IO_HOP)
+        self._gate = NoiseGate()
+        self._leveler = InputLeveler()
         self._audio.fill(0)
         self._f0.fill(0)
 
@@ -231,7 +231,7 @@ class RealtimeEngine:
             pipeline = Passthrough() if passthrough else self._make_pipeline(assets_dir, voice_dir, voice, block_frames)
             if self._cancelled.is_set():
                 return
-            with audio_apartment():
+            with audio_apartment(), timer_resolution():
                 streams = AudioStreams(devices, block_frames * _IO_HOP, pipeline.startup_delay_ms)
                 try:
                     streams.start()
@@ -300,7 +300,7 @@ class RealtimeEngine:
                     "in_db": round(in_db, 1), "out_db": round(out_db, 1),
                     "infer_ms": round(infer_ms, 1),
                     "latency_ms": round(
-                        block_ms + max(infer_ms, pipeline.startup_delay_ms) + 10
+                        block_ms + max(infer_ms, pipeline.startup_delay_ms) + JITTER_MS
                         + streams.device_latency_ms + pipeline.delay_ms,
                     ),
                     "underruns": streams.underruns,

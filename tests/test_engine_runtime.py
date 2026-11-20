@@ -13,7 +13,8 @@ from onnx.numpy_helper import from_array
 
 from app.engine.f0_rmvpe import decode, f0_to_coarse
 from app.engine.index import VoiceIndex
-from app.engine.realtime import LATENCY_FRAMES, RvcPipeline, apply_gate
+from app.engine.dynamics import FRAME, InputLeveler, NoiseGate, frame_power, speech_power
+from app.engine.realtime import LATENCY_FRAMES, RvcPipeline
 from scripts.offline_convert import convert_samples, read_wav, write_wav
 
 
@@ -115,10 +116,54 @@ class EngineRuntimeTests(unittest.TestCase):
         np.testing.assert_allclose(actual[:2], expected, rtol=1e-6)
         np.testing.assert_array_equal(actual[2:], [0, 0])
 
-    def test_noise_gate_works_on_single_ten_ms_frame(self) -> None:
-        samples = np.repeat(np.array([0.001, 0.2], dtype=np.float32), 480)
-        np.testing.assert_array_equal(apply_gate(samples, -45), np.repeat(np.array([0, 0.2], dtype=np.float32), 480))
-        np.testing.assert_array_equal(apply_gate(samples, -60), samples)
+    def _gated(self, gate: NoiseGate, levels: list[float], threshold: float) -> np.ndarray:
+        block = np.repeat(np.array(levels, dtype=np.float32), FRAME)
+        gate.detect(frame_power(block), threshold)
+        return gate.apply(np.ones(len(block), dtype=np.float32)).reshape(-1, FRAME)
+
+    def test_noise_gate_keeps_quiet_speech_frames_open(self) -> None:
+        gate = NoiseGate()
+        # Noise, then speech with a quiet consonant and a short pause inside it.
+        levels = [0.001] * 10 + [0.2] * 5 + [0.004] * 3 + [0.001] * 10 + [0.2] * 4
+        gains = self._gated(gate, levels, -45)
+        # Output frame 10 carries microphone frames 4 to 5, so the fade-in
+        # there finishes about 50 ms ahead of the speech that starts at 10.
+        np.testing.assert_array_equal(gains[:10], 0)
+        self.assertEqual(gains[10, -1], 1)
+        np.testing.assert_array_equal(gains[11:], 1)
+        self.assertTrue((np.diff(gains.reshape(-1)) <= 1 / FRAME + 1e-6).all())
+
+        # It closes with a fade once the 300 ms hold has passed.
+        tail = self._gated(gate, [0.001] * 60, -45)
+        np.testing.assert_array_equal(tail[:35], 1)
+        np.testing.assert_array_equal(tail[36:], 0)
+        self.assertTrue((np.abs(np.diff(tail.reshape(-1))) <= 1 / FRAME + 1e-6).all())
+
+    def test_noise_gate_can_be_switched_off(self) -> None:
+        gains = self._gated(NoiseGate(), [0.0001] * 12, -60)
+        np.testing.assert_array_equal(gains[1:], 1)
+
+    def test_leveler_raises_quiet_speech_and_leaves_loud_speech(self) -> None:
+        tone = np.sin(np.arange(FRAME * 20) * (2 * np.pi * 200 / 48000)).astype(np.float32)
+        quiet, loud, floor = 0.01 * tone, 0.3 * tone, speech_power(-50)
+
+        leveler = InputLeveler()
+        for _ in range(60):
+            output = leveler.process(quiet, frame_power(quiet), floor)
+        self.assertAlmostEqual(float(np.sqrt(np.mean(output**2))), 0.01 * 8 / np.sqrt(2), delta=0.003)
+        # A sudden loud sound brings the gain down within one frame.
+        output = leveler.process(loud, frame_power(loud), floor)
+        self.assertLessEqual(np.max(np.abs(output)), 1)
+        self.assertLess(np.max(np.abs(output[FRAME:])), 0.95)
+        self.assertGreaterEqual(np.max(np.abs(output[FRAME:])), 0.3)
+
+        leveler = InputLeveler()
+        self.assertIs(leveler.process(loud, frame_power(loud), floor), loud)
+        # Background noise below the speech level does not move the gain.
+        noise = 0.001 * tone
+        for _ in range(60):
+            output = leveler.process(noise, frame_power(noise), floor)
+        self.assertIs(output, noise)
 
     def test_faiss_top_matches_and_ignores_dimension_mismatch(self) -> None:
         import faiss

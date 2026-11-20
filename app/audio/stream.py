@@ -9,6 +9,8 @@ import sounddevice as sd
 from .ringbuffer import RingBuffer
 
 SAMPLE_RATE = 48000
+# Extra queued output that absorbs scheduling and inference jitter.
+JITTER_MS = 30
 
 
 @contextmanager
@@ -26,6 +28,18 @@ def audio_apartment():
             ole32.CoUninitialize()
 
 
+@contextmanager
+def timer_resolution():
+    """Give the worker's short waits millisecond accuracy on Windows."""
+    winmm = ctypes.WinDLL("winmm")
+    raised = winmm.timeBeginPeriod(1) == 0
+    try:
+        yield
+    finally:
+        if raised:
+            winmm.timeEndPeriod(1)
+
+
 class AudioStreams:
     """Own one input and separate output clocks, with copy-only callbacks."""
 
@@ -33,7 +47,7 @@ class AudioStreams:
         self._devices = devices
         self._limit = block_size * 2
         self._silence = np.zeros(block_size, dtype=np.float32)
-        prefill = block_size + round(SAMPLE_RATE * (startup_delay_ms + 10) / 1000)
+        prefill = block_size + round(SAMPLE_RATE * (startup_delay_ms + JITTER_MS) / 1000)
         self._startup_silence = np.zeros(min(self._limit, prefill), dtype=np.float32)
         self.input = RingBuffer(block_size * 4)
         self.output = RingBuffer(block_size * 4)

@@ -23,7 +23,7 @@
 
   app.defaults = Object.freeze({
     input_id: null, output_id: null, monitor_id: null, selected_voice_id: null,
-    pitch: 0, index_rate: 0.5, gate_db: -45, latency_mode: 'balanced',
+    pitch: 0, index_rate: 0.5, gate_db: -50, latency_mode: 'balanced',
     monitor: false, monitor_volume: 0.6, gpu_index: 0, onboarding_dismissed: false,
   });
 })();

@@ -92,7 +92,7 @@ def main() -> int:
     parser.add_argument("--out", dest="output", required=True, type=Path, help="输出 48 kHz WAV")
     parser.add_argument("--pitch", type=int, choices=range(-12, 13), default=0, metavar="半音")
     parser.add_argument("--index-rate", type=float, default=0.5, metavar="比率")
-    parser.add_argument("--gate-db", type=float, default=-45, metavar="dB")
+    parser.add_argument("--gate-db", type=float, default=-50, metavar="dB")
     parser.add_argument("--latency", choices=LATENCY_FRAMES, default="balanced")
     parser.add_argument("--gpu", type=int, default=0, metavar="显卡编号", help="使用 -1 选择 CPU")
     args = parser.parse_args()

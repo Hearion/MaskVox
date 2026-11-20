@@ -40,7 +40,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "selected_voice_id": None,
     "pitch": 0,
     "index_rate": 0.5,
-    "gate_db": -45,
+    "gate_db": -50,
     "latency_mode": "balanced",
     "gpu_index": 0,
     "monitor": False,
