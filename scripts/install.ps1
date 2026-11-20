@@ -19,6 +19,20 @@ function Use-OfficialIndex {
 }
 
 $versionProbe = 'import sys; sys.exit(sys.version_info[:2] != (3,10) or sys.maxsize <= 2**32)'
+
+function Test-PythonArchive([string]$Archive) {
+    if (!(Test-Path -LiteralPath $Archive -PathType Leaf)) { return $false }
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    $file = [IO.File]::OpenRead($Archive)
+    try {
+        $hash = [BitConverter]::ToString($sha256.ComputeHash($file)).Replace('-', '')
+        return $hash -eq '7C6F99B160A36A7E09492DFCFF2B0A3A60BB5229CA44CDCC3ECB32871A6144D0'
+    } finally {
+        $file.Dispose()
+        $sha256.Dispose()
+    }
+}
+
 function Get-Python310 {
     if (Get-Command py.exe -ErrorAction SilentlyContinue) {
         try {
@@ -30,23 +44,20 @@ function Get-Python310 {
     }
     $runtime = Join-Path $root '.runtime'
     $exe = Join-Path $runtime 'tools\python.exe'
-    if (!(Test-Path -LiteralPath $exe)) {
-        Write-Host '[MaskVox] 正在从 NuGet 下载 Python 3.10 x64…'
+    $readyFile = Join-Path $runtime 'python310-ready'
+    if (!(Test-Path -LiteralPath $exe) -or !(Test-Path -LiteralPath $readyFile)) {
         New-Item -ItemType Directory -Force -Path $runtime | Out-Null
         $archive = Join-Path $runtime 'python.3.10.11.zip'
-        if (!(Test-Path -LiteralPath $archive)) {
-            Invoke-WebRequest -UseBasicParsing -Uri 'https://api.nuget.org/v3-flatcontainer/python/3.10.11/python.3.10.11.nupkg' -OutFile $archive
-        }
-        $sha256 = [Security.Cryptography.SHA256]::Create()
-        $file = [IO.File]::OpenRead($archive)
-        try {
-            $hash = [BitConverter]::ToString($sha256.ComputeHash($file)).Replace('-', '')
-        } finally {
-            $file.Dispose()
-            $sha256.Dispose()
-        }
-        if ($hash -ne '7C6F99B160A36A7E09492DFCFF2B0A3A60BB5229CA44CDCC3ECB32871A6144D0') {
-            throw '[MaskVox] Python 安装文件 SHA256 校验失败。'
+        if (!(Test-PythonArchive $archive)) {
+            Write-Host '[MaskVox] 正在从 NuGet 下载 Python 3.10 x64…'
+            $download = $archive + '.download'
+            try {
+                Invoke-WebRequest -UseBasicParsing -Uri 'https://api.nuget.org/v3-flatcontainer/python/3.10.11/python.3.10.11.nupkg' -OutFile $download
+                if (!(Test-PythonArchive $download)) { throw '[MaskVox] Python 安装文件 SHA256 校验失败。' }
+                Move-Item -LiteralPath $download -Destination $archive -Force
+            } finally {
+                if (Test-Path -LiteralPath $download) { Remove-Item -LiteralPath $download -Force }
+            }
         }
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $package = [IO.Compression.ZipFile]::OpenRead($archive)
@@ -63,6 +74,7 @@ function Get-Python310 {
         } finally {
             $package.Dispose()
         }
+        New-Item -ItemType File -Force -Path $readyFile | Out-Null
     }
     return $exe
 }

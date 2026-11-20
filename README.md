@@ -37,9 +37,11 @@ MaskVox 是 Windows 10/11 x64 上的实时 RVC 变声器。它把麦克风输入
 - **延迟偏大**　优先尝试「低延迟」，在设置里确认当前显卡是 RTX 3070 或另一张硬件显卡。状态栏显示估算链路延迟，聊天软件和网络的额外延迟由它们各自决定。
 - **声音断续或游戏掉帧**　查看状态栏的推理耗时。出现性能提示时，可试用「均衡」或「高质量」，并为显卡留出余量。CPU 模式适合排查问题及离线转换。
 - **没有索引或检索不可用**　音色仍可变声。需要音色贴合时，导入与该音色配套的索引，优先选 `added_` 开头的文件。
-- **窗口无法打开**　确认系统可使用 Microsoft Edge WebView2 Runtime，查看程序目录下的 `logs/maskvox.log`。 [WebView2 运行时](https://developer.microsoft.com/microsoft-edge/webview2/)
+- **窗口无法打开**　确认系统可使用 Microsoft Edge WebView2 Runtime，查看程序目录下的 `logs/maskvox.log`。如果日志显示 ONNX Runtime 无法加载 DLL，可检查 x64 Visual C++ 运行时。 [WebView2 运行时](https://developer.microsoft.com/microsoft-edge/webview2/) · [Visual C++ 运行时](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
 
 音色保存在 `voices/`，设置写入 `settings.json`。下次启动会恢复选择和参数，需手动开启变声。
+
+MaskVox 1.0.0 便携 ZIP 约 416 MB，解压后运行文件约 598 MB，使用通过校验的 FP16 基础模型。
 
 ## 离线转换与打包
 
@@ -53,7 +55,7 @@ MaskVox 是 Windows 10/11 x64 上的实时 RVC 变声器。它把麦克风输入
 
 ```powershell
 converter\.venv\Scripts\python.exe -m converter.export_base_models --fp16-out assets/fp16-candidate
-.venv\Scripts\python.exe scripts\build_release.py --assets assets/fp16-candidate --zip
+.venv\Scripts\python.exe scripts\build_release.py --assets assets/fp16-candidate --out dist/MaskVox-local --zip
 ```
 
 ## 验证记录
@@ -67,6 +69,8 @@ converter\.venv\Scripts\python.exe -m converter.export_base_models --fp16-out as
 | 高质量 | 350 ms | 35.3 ms | 37.6 ms |
 
 使用最终 FP16 管线和 HyperX 耳机路径，低延迟档的估算值中位数为 278 ms，P95 为 285 ms。设备缓冲与负载会影响估算值。测试有数次欠载回调，输入无溢出。HyperX 麦克风至耳机的独立直通试验连续 601 秒，欠载与溢出均为 0。
+
+在 30 分钟实时压力测试中，以合成语音模拟设备时钟，真实 v2 音色通过 RTX 3070 的 DirectML 和 FP32 基础模型持续运行。均衡档推理中位数为 63.9 ms，P95 为 72.7 ms。进程工作集约 1.28 GiB，输入无溢出，输出缓冲记录 7 次欠载。
 
 已用真实 v1 和 v2 音色完成转换与两种长度的验证，覆盖 `.maskvox` 导入、重新导出及重导。基础模型与真实音色的 ONNX 输出均对照 PyTorch 验证。另有自动化测试覆盖三种采样率的转换、损坏或不适用的检查点、恶意压缩包路径、ONNX 外部数据引用、合成模型分块、响度门限、音高、检索、缓冲及拼接。
 
