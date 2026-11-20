@@ -11,7 +11,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
-from . import config
+from . import cable_setup, config
 from .audio.devices import list_devices, refresh_devices
 from .engine.ort_session import list_adapters
 from .engine.realtime import RealtimeEngine
@@ -51,7 +51,7 @@ class Api:
         self._window: Any = None
         self._events = events
         self._settings = config.Settings()
-        self._library = VoiceLibrary(config.VOICES_DIR)
+        self._library = VoiceLibrary(config.VOICES_DIR, config.BUILTIN_VOICES_DIR)
         self._engine = RealtimeEngine(events.emit)
         self._lock = RLock()
         self._imports = Imports(self._library, events.emit, self._select_imported)
@@ -67,6 +67,19 @@ class Api:
             self._events.emit("warning", {"code": "device_list_failed", "message": "无法读取音频设备，请尝试刷新。"})
         self._adapters = list_adapters()
         self._reconcile_devices()
+        self._reconcile_voice()
+
+    def _reconcile_voice(self) -> None:
+        selected = self._settings.snapshot()["selected_voice_id"]
+        if selected:
+            try:
+                self._library.get(selected)
+                if (self._library.directory(selected) / "model.onnx").is_file():
+                    return
+            except VoiceError:
+                LOGGER.info("上次选择的音色已不可用，尝试使用其它音色")
+        voices = self._library.list()
+        self._settings.update(selected_voice_id=voices[0]["id"] if voices else None)
 
     def _reconcile_devices(self) -> None:
         settings = self._settings.snapshot()
@@ -76,7 +89,12 @@ class Api:
             "monitor_id": self._devices.get("default_output_id"),
         }
         if defaults["output_id"] is None:
-            defaults["output_id"] = self._devices.get("default_output_id")
+            headset = next(
+                (item["id"] for item in self._devices["outputs"]
+                 if any(name in item["name"].casefold() for name in ("headphone", "headset", "耳机", "耳機"))),
+                None,
+            )
+            defaults["output_id"] = headset if headset is not None else self._devices.get("default_output_id")
         changes = {}
         for key, group in DEVICE_SETTINGS.items():
             name_key = key.replace("_id", "_name")
@@ -172,6 +190,7 @@ class Api:
                     "backend": self._engine.backend,
                 },
                 "has_vb_cable": self._devices["has_vb_cable"],
+                "vb_cable_installer_ready": cable_setup.is_installer_available(),
                 "base_models_ready": config.base_models_ready(),
                 "converter_installed": converter_installed(),
                 "gpu_adapters": self._adapters,
@@ -266,6 +285,8 @@ class Api:
     @response
     def delete_voice(self, voice_id: str) -> dict:
         with self._lock:
+            if self._library.get(voice_id)["builtin"]:
+                raise VoiceError("内置音色会始终保留在音色库。")
             selected = self._settings.snapshot()["selected_voice_id"] == voice_id
             if selected:
                 self._engine.stop()
@@ -320,8 +341,30 @@ class Api:
             self._engine.stop()
 
     @response
+    def preview_voice(self) -> dict:
+        with self._lock:
+            if self._engine.state in {"loading", "running"}:
+                raise VoiceError("请先停止变声，再试听音色样本。")
+            voice_id = self._settings.snapshot()["selected_voice_id"]
+            if voice_id is None:
+                raise VoiceError("请选择一个内置音色。")
+            return {"url": self._library.preview(voice_id).resolve().as_uri()}
+
+    @response
+    def install_vb_cable(self) -> None:
+        with self._lock:
+            if self._closing or self._engine.state in {"loading", "running"}:
+                raise VoiceError("请先停止变声，再安装 VB-Cable。")
+            if self._devices["has_vb_cable"]:
+                raise VoiceError("系统已检测到 VB-Cable。")
+        try:
+            cable_setup.launch_installer()
+        except RuntimeError as exc:
+            raise VoiceError(str(exc)) from exc
+
+    @response
     def open_url(self, url: str) -> None:
-        if url not in {config.VB_CABLE_URL, config.WEBVIEW_URL}:
+        if url not in {config.VB_CABLE_URL, config.VB_CABLE_SUPPORT_URL, config.WEBVIEW_URL}:
             raise VoiceError("该链接不可用。")
         webbrowser.open(url)
 

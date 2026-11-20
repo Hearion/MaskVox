@@ -3,6 +3,7 @@
 
   const app = window.MaskVox;
   const CABLE_URL = 'https://vb-audio.com/Cable/';
+  const CABLE_SUPPORT_URL = 'https://shop.vb-audio.com/en/win-apps/11-vb-cable.html';
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const SLIDERS = {
     pitch: ['pitch', (value) => `${value > 0 ? '+' : ''}${value} 半音`.replace('-', '−')],
@@ -119,7 +120,8 @@
     const store = app.createStore({
       connected: false, settings: { ...app.defaults }, voices: [], devices: null, engine: { state: 'idle' },
       has_vb_cable: false, base_models_ready: false, converter_installed: false, gpu_adapters: [],
-      logs_path: '', version: '', busy: null, indexUnavailable: false,
+      logs_path: '', version: '', busy: null, indexUnavailable: false, vb_cable_installer_ready: false,
+      cableInstallerPending: false, cableInstallLaunched: false, previewStatus: 'idle',
     });
     const pendingSliders = new Set();
     const freshVoices = new Set();
@@ -132,6 +134,10 @@
     const settingsDialog = $('settings');
     const statusStats = $('status-stats');
     const voiceLabel = $('current-voice');
+    const previewAudio = new Audio();
+    previewAudio.preload = 'none';
+    let previewRevision = 0;
+    let previewId = null;
     let bridge;
     let refreshing = null;
     let refreshAgain = false;
@@ -190,9 +196,80 @@
       }
     }
 
+    function hasPreview(voice) {
+      return Boolean(voice?.builtin && voice.preview_ready);
+    }
+
+    function stopPreview() {
+      if (store.read().previewStatus === 'idle') return;
+      previewRevision++;
+      previewId = null;
+      const url = previewAudio.getAttribute('src');
+      store.update({ previewStatus: 'idle' });
+      previewAudio.pause();
+      previewAudio.removeAttribute('src');
+      previewAudio.load();
+      if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
+    }
+
+    async function togglePreview() {
+      const state = store.read();
+      if (state.previewStatus !== 'idle') return stopPreview();
+      const voice = state.voices.find((item) => item.id === state.settings.selected_voice_id);
+      if (!hasPreview(voice) || state.busy || !['idle', 'error'].includes(state.engine.state)) return;
+
+      previewId = voice.id;
+      const revision = ++previewRevision;
+      store.update({ previewStatus: 'loading' });
+      const result = await safeCall('preview_voice');
+      const url = typeof result?.url === 'string' ? result.url : '';
+      if (revision !== previewRevision) {
+        if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
+        return;
+      }
+      if (!url?.startsWith(bridge.preview ? 'blob:' : 'file:')) {
+        stopPreview();
+        if (result !== undefined) notify('无法读取试听音频。', 'error');
+        return;
+      }
+      try {
+        previewAudio.src = url;
+        await previewAudio.play();
+        if (revision === previewRevision) store.update({ previewStatus: 'playing' });
+      } catch {
+        if (revision !== previewRevision) return;
+        stopPreview();
+        notify('试听音频无法播放，请检查默认播放设备。', 'error');
+      }
+    }
+
+    previewAudio.addEventListener('ended', stopPreview);
+    previewAudio.addEventListener('error', () => {
+      if (store.read().previewStatus === 'idle') return;
+      stopPreview();
+      notify('试听音频无法播放，请检查默认播放设备。', 'error');
+    });
+
+    async function installCable() {
+      const state = store.read();
+      if (!state.connected || state.has_vb_cable || state.cableInstallerPending) return;
+      if (!state.vb_cable_installer_ready) return safeCall('open_url', CABLE_URL);
+
+      store.update({ cableInstallerPending: true });
+      try {
+        if (await safeCall('install_vb_cable') !== undefined) {
+          store.update({ cableInstallLaunched: true });
+          notify(bridge.preview ? '已模拟打开安装程序，可点「刷新设备」查看结果。' : '安装程序已打开。完成后请重启 Windows，再刷新音频设备。');
+        }
+      } finally {
+        store.update({ cableInstallerPending: false });
+      }
+    }
+
     const viewLibrary = app.createVoiceLibrary($('voice-list'), { voice: $('voice-template') }, {
       select: (voice) => {
         if (voice.id === store.read().settings.selected_voice_id) return;
+        stopPreview();
         void withBusy('正在切换…', async () => {
           const settings = await safeCall('select_voice', voice.id);
           if (settings) applySettings(settings, ['selected_voice_id']);
@@ -245,14 +322,16 @@
       const backendText = backend === 'DirectML' ? '显卡加速 · DirectML' : backend === 'CPU' ? 'CPU 推理' : '推理后端待启动';
       $('backend').querySelector('span').textContent = bridge?.preview ? `界面预览 · ${backendText}` : backendText;
       if (voice) {
-        if (voiceLabel.dataset.key !== `${voice.id}\n${voice.name}`) {
-          voiceLabel.dataset.key = `${voice.id}\n${voice.name}`;
+        const detail = [app.voiceKind(voice), app.voiceSpec(voice)].filter(Boolean).join(' · ');
+        const key = `${voice.id}\n${voice.name}\n${detail}`;
+        if (voiceLabel.dataset.key !== key) {
+          voiceLabel.dataset.key = key;
           const name = document.createElement('strong');
           name.textContent = voice.name;
           name.title = voice.name;
           const spec = document.createElement('span');
           spec.className = 'voice-spec';
-          spec.textContent = app.voiceSpec(voice);
+          spec.textContent = detail;
           voiceLabel.replaceChildren('当前音色', name, spec);
         }
       } else {
@@ -260,10 +339,34 @@
         voiceLabel.textContent = '未选择音色';
       }
 
+      const canPreview = hasPreview(voice);
+      const previewActive = state.previewStatus !== 'idle';
+      const previewButton = $('preview-voice');
+      previewButton.hidden = !canPreview;
+      previewButton.disabled = !connected || (!previewActive && (waiting || running));
+      previewButton.setAttribute('aria-pressed', String(previewActive));
+      previewButton.setAttribute('aria-busy', String(state.previewStatus === 'loading'));
+      previewButton.title = previewActive ? '停止播放示例' : waiting || running ? '停止变声后试听' : '播放音色示例，无需麦克风';
+      previewButton.querySelector('span').textContent = previewActive ? '停止试听' : '试听音色';
+      previewButton.querySelector('use').setAttribute('href', previewActive ? '#i-stop' : '#i-headphones');
+
       $('cable-guide').hidden = !connected || state.has_vb_cable;
+      const cableLabel = state.vb_cable_installer_ready ? '安装 VB-Cable' : '官网下载';
+      $('cable-action').textContent = cableLabel;
+      $('cable-guide').title = state.vb_cable_installer_ready ? '打开 VB-Audio 安装程序。安装需要管理员权限，完成后重启 Windows。' : '打开 VB-Audio 官方下载页';
+      $('cable-reminder').hidden = !state.cableInstallLaunched || state.has_vb_cable;
+      $('cable-reminder').textContent = bridge?.preview ? '安装流程已模拟，点上方按钮刷新设备。' : '完成安装并重启 Windows 后，点上方按钮刷新设备。';
+      $('onboarding-install').hidden = state.has_vb_cable;
+      $('onboarding-install').textContent = state.vb_cable_installer_ready ? cableLabel : '下载 VB-Cable';
+      $('onboarding-cable-ready').hidden = !state.has_vb_cable;
+      $('settings-cable-install').hidden = state.has_vb_cable;
+      $('settings-cable-install').textContent = cableLabel;
+      for (const id of ['cable-guide', 'onboarding-install', 'settings-cable-install']) $(id).disabled = state.cableInstallerPending;
       $('assets-guide').hidden = !connected || state.base_models_ready;
       $('empty-library').hidden = !connected || state.voices.length > 0 || jobCards.size > 0;
       $('onboarding').hidden = !connected || settings.onboarding_dismissed;
+      $('onboarding-import').textContent = canPreview ? (previewActive ? '停止试听' : '试听当前内置音色') : '导入一个音色';
+      $('onboarding-import').disabled = canPreview && previewButton.disabled;
       $('import-voices').disabled = !connected || openingPicker;
       $('voice-count').textContent = String(state.voices.length);
       viewLibrary(state.voices, settings.selected_voice_id, waiting, freshVoices);
@@ -298,6 +401,7 @@
       const checks = [
         ['base-status', state.base_models_ready, '已就绪', '缺少文件'],
         ['converter-status', state.converter_installed, '已安装', '未安装'],
+        ['cable-status', state.has_vb_cable, '已检测到', '未检测到'],
       ];
       for (const [id, ready, yes, no] of checks) {
         $(id).dataset.ready = connected ? String(ready) : '';
@@ -422,8 +526,11 @@
       }
     }
 
-    for (const id of ['import-voices', 'empty-library', 'onboarding-import']) click(id, importVoices);
-    for (const id of ['cable-guide', 'onboarding-install']) click(id, () => safeCall('open_url', CABLE_URL));
+    for (const id of ['import-voices', 'empty-library']) click(id, importVoices);
+    click('onboarding-import', () => $('preview-voice').hidden ? importVoices() : togglePreview());
+    click('preview-voice', togglePreview);
+    for (const id of ['cable-guide', 'onboarding-install', 'settings-cable-install']) click(id, installCable);
+    click('cable-support', () => safeCall('open_url', CABLE_SUPPORT_URL));
     click('assets-guide', () => safeCall('open_install_guide'));
     click('close-onboarding', async () => applySettings(await safeCall('dismiss_onboarding'), ['onboarding_dismissed']));
     click('settings-toggle', () => {
@@ -441,6 +548,7 @@
       const state = store.read();
       if (state.engine.state === 'running') return withBusy('正在停止…', () => safeCall('stop'));
       if (!state.settings.selected_voice_id) return importVoices();
+      stopPreview();
       return withBusy('正在加载音色…', () => safeCall('start'));
     });
     click('refresh-devices', () => withBusy('正在刷新设备…', async () => {
@@ -546,7 +654,14 @@
     document.addEventListener('dragover', (event) => { if (isFileDrop(event)) event.preventDefault(); });
     document.addEventListener('drop', (event) => { if (isFileDrop(event)) event.preventDefault(); });
 
-    store.subscribe(render);
+    store.subscribe((state) => {
+      if (state.previewStatus !== 'idle' && (state.settings.selected_voice_id !== previewId
+        || !['idle', 'error'].includes(state.engine.state))) {
+        stopPreview();
+        return;
+      }
+      render(state);
+    });
     render(store.read());
     try {
       bridge = await app.connect(emit);

@@ -88,6 +88,32 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["sr"], 32000)
         self.assertEqual(meta["f0"], 1)
 
+    def test_built_in_preset_is_ready_and_preserves_credit(self):
+        presets = self.root / "presets"
+        preset = presets / "b0010001"
+        preset.mkdir(parents=True)
+        write_model(preset / "model.onnx")
+        (preset / "preview.wav").touch()
+        credit = {"source": "作者", "license": "CC BY 4.0"}
+        meta = {"id": preset.name, "name": "男声", "gender": "male", "attribution": credit}
+        (preset / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+
+        library = VoiceLibrary(self.root / "imports", presets)
+        self.assertTrue(library.list()[0]["builtin"])
+        self.assertEqual(library.preview(preset.name), preset / "preview.wav")
+        with self.assertRaisesRegex(VoiceError, "内置音色"):
+            library.rename(preset.name, "改名")
+        with self.assertRaisesRegex(VoiceError, "内置音色"):
+            library.delete(preset.name)
+        shared = self.root / "preset.maskvox"
+        library.export(preset.name, shared)
+        with library.stage() as temp:
+            target = Path(temp)
+            verified = unpack_package(shared, target)
+            imported = library.add(target, verified["name"], shared.name, verified=verified)
+        self.assertFalse(imported["builtin"])
+        self.assertEqual(library.get(imported["id"])["attribution"], credit)
+
     def test_rvc_index_pairing(self):
         added = Path("added")
         trained = Path("trained")

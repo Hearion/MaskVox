@@ -4,15 +4,17 @@ MaskVox 是 Windows 10/11 x64 上的实时 RVC 变声器。它把麦克风输入
 
 ## 开始使用
 
-1. 将便携版完整解压到可写目录，双击其中的 `start.bat`。便携版已包含 Python 和基础模型，可直接导入 `.maskvox`。
-2. 点击「导入音色」或把音色包拖入音色库。通过卡片右侧的菜单可重命名、导出或删除。
-3. 选好麦克风和输出设备，点击中间的电源按钮。只想在本机试听时，把主输出选为耳机。
-4. 要给微信、QQ、Discord、KOOK 或游戏使用，请安装 VB-Cable。解压驱动包，以管理员身份运行其中的 x64 安装程序并重启 Windows。 [VB-Cable 官方下载](https://vb-audio.com/Cable/)
-5. 回到 MaskVox，刷新音频设备，把「输出到」设为 **CABLE Input**。在聊天或游戏软件的语音设置里，将麦克风设为 **CABLE Output**，扬声器仍选日常使用的耳机或音箱。
+1. 将便携版完整解压到可写目录，双击 `start.bat`。首次启动会选中一个内置音色。
+2. 在「沉稳男声」和「清亮女声」间切换，点击「试听音色」即可播放随包样本。要实时变声，选择麦克风与耳机，再点击中间的电源按钮。
+3. 要接入微信、QQ、Discord、KOOK 或游戏，点击顶栏的「安装 VB-Cable」。安装器已随包提供。按 Windows 管理员授权和安装器的提示安装，随后重启 Windows。
+4. 回到 MaskVox 后，刷新音频设备，把「输出到」设为 **CABLE Input**。在聊天或游戏软件里把麦克风设为 **CABLE Output**，扬声器设为日常使用的耳机或音箱。
+5. 如需其他音色，点击「导入音色」或把音色包拖入音色库。卡片菜单可以管理已导入的音色。
 
 在 Discord 的「语音和视频」、KOOK 的语音设置，以及微信和 QQ 通话或应用的音频设置里查找麦克风选项。没有单独选项的应用可以跟随 Windows「设置 → 系统 → 声音 → 输入」里的默认设备。需要退出原有通话或重启应用，设备列表才可能刷新。
 
-软件用于朋友间的娱乐。请勿用于冒充他人、诈骗或其他违法用途。请使用你有权使用的音色，并确认音色包和索引的来源。发行包里的基础模型用于提取内容特征和音高。变声目标音色由你导入。
+软件用于朋友间的娱乐。请勿用于冒充他人、诈骗或其他违法用途。请使用你有权使用的音色，并确认音色包和索引的来源。两款内置音色分别由同类 RVC 模型融合而成。 [内置音色署名](assets/builtin-voices/NOTICE.md)
+
+VB-Cable 由 VB-Audio 提供。便携版附带原版 VB-Cable 标准版离线安装包。VB-Cable 采用 Donationware 模式，欢迎捐助或购买许可。 [VB-Audio 官方页面](https://vb-audio.com/Cable/) · [捐助与购买许可](https://shop.vb-audio.com/en/win-apps/11-vb-cable.html)
 
 ## 导入社区 RVC 音色
 
@@ -41,7 +43,7 @@ MaskVox 是 Windows 10/11 x64 上的实时 RVC 变声器。它把麦克风输入
 
 音色保存在 `voices/`，设置写入 `settings.json`。下次启动会恢复选择和参数，需手动开启变声。
 
-MaskVox 1.0.0 便携 ZIP 约 416 MB，解压后运行文件约 598 MB，使用通过校验的 FP16 基础模型。
+MaskVox 1.1.0 便携版包含 Python、通过校验的 FP16 基础模型、两款内置音色和 VB-Cable 原版离线安装包。
 
 ## 离线转换与打包
 
@@ -55,8 +57,13 @@ MaskVox 1.0.0 便携 ZIP 约 416 MB，解压后运行文件约 598 MB，使用�
 
 ```powershell
 converter\.venv\Scripts\python.exe -m converter.export_base_models --fp16-out assets/fp16-candidate
+converter\.venv\Scripts\python.exe -X utf8 -m converter.prepare_builtin_voices
+New-Item -ItemType Directory -Force assets\drivers
+curl.exe -fL https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack46.zip -o assets\drivers\VBCABLE_Driver_Pack46.zip
 .venv\Scripts\python.exe scripts\build_release.py --assets assets/fp16-candidate --out dist/MaskVox-local --zip
 ```
+
+打包脚本会校验驱动包的 SHA-256，并检查内置音色和试听样本。
 
 ## 验证记录
 

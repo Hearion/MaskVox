@@ -128,6 +128,9 @@ def unpack_package(path: Path, out: Path, check: Callable[[], None] | None = Non
     except (BadZipFile, UnicodeError, json.JSONDecodeError, NotImplementedError) as exc:
         raise VoiceError("音色包已损坏或使用了不支持的压缩格式。") from exc
     result = verify_model(out / "model.onnx")
+    attribution = data.get("attribution")
+    if isinstance(attribution, dict) and all(isinstance(value, str) for value in attribution.values()):
+        result["attribution"] = attribution
     return {**result, "name": data["name"]}
 
 

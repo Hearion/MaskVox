@@ -14,6 +14,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = Path(os.environ.get("MASKVOX_DATA_DIR", ROOT)).expanduser().resolve()
 ASSETS_DIR = ROOT / "assets"
+BUILTIN_VOICES_DIR = ASSETS_DIR / "builtin-voices"
 VOICES_DIR = DATA_DIR / "voices"
 LOGS_DIR = DATA_DIR / "logs"
 SETTINGS_PATH = DATA_DIR / "settings.json"
@@ -23,8 +24,9 @@ CONVERTER_PYTHON = CONVERTER_DIR / ".venv" / (
 )
 UI_PATH = ROOT / "app" / "ui" / "index.html"
 BASE_MODELS = ("contentvec.onnx", "rmvpe.onnx", "rmvpe_mel.npz")
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 VB_CABLE_URL = "https://vb-audio.com/Cable/"
+VB_CABLE_SUPPORT_URL = "https://shop.vb-audio.com/en/win-apps/11-vb-cable.html"
 WEBVIEW_URL = "https://developer.microsoft.com/microsoft-edge/webview2/"
 
 DEFAULT_SETTINGS: dict[str, Any] = {

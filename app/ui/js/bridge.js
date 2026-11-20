@@ -2,15 +2,43 @@
   'use strict';
 
   const app = window.MaskVox;
-  const STORAGE_KEY = 'maskvox-preview-v1';
+  const STORAGE_KEY = 'maskvox-preview-v2';
   const sampleVoice = (id, name, version, sr, has_index) => ({
     id, name, version, sr, f0: 1, has_index, vec_dim: version === 'v2' ? 768 : 256,
   });
 
+  function mockPreview(gender) {
+    const sampleRate = 8000;
+    const frames = Math.round(sampleRate * 1.5);
+    const buffer = new ArrayBuffer(44 + frames * 2);
+    const bytes = new Uint8Array(buffer);
+    const numbers = new DataView(buffer);
+    const encode = (tag, offset) => bytes.set(new TextEncoder().encode(tag), offset);
+    encode('RIFF', 0);
+    numbers.setUint32(4, buffer.byteLength - 8, true);
+    encode('WAVEfmt ', 8);
+    numbers.setUint32(16, 16, true);
+    numbers.setUint16(20, 1, true);
+    numbers.setUint16(22, 1, true);
+    numbers.setUint32(24, sampleRate, true);
+    numbers.setUint32(28, sampleRate * 2, true);
+    numbers.setUint16(32, 2, true);
+    numbers.setUint16(34, 16, true);
+    encode('data', 36);
+    numbers.setUint32(40, frames * 2, true);
+    const hz = gender === 'male' ? 132 : 214;
+    for (let index = 0; index < frames; index++) {
+      const time = index / sampleRate;
+      const envelope = Math.sin(Math.PI * index / frames) ** 2;
+      numbers.setInt16(44 + index * 2, 800 * envelope * Math.sin(2 * Math.PI * hz * time), true);
+    }
+    return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+  }
+
   function createMock(emit) {
     const initialVoices = [
-      sampleVoice('mock-01', '暮青', 'v2', 40000, true),
-      sampleVoice('mock-02', '雾岛', 'v2', 48000, false),
+      { ...sampleVoice('mock-01', '暮青', 'v2', 40000, true), builtin: true, gender: 'male', preview_ready: true, exportable: true },
+      { ...sampleVoice('mock-02', '雾岛', 'v2', 48000, false), builtin: true, gender: 'female', preview_ready: true, exportable: true },
       sampleVoice('mock-03', '砂糖', 'v1', 40000, true),
     ];
     const devices = {
@@ -32,6 +60,7 @@
     let engine = { state: 'idle', message: '', backend: null };
     let meterTimer = null;
     let loadingTimer = null;
+    let cableInstallerRan = false;
     const imports = new Map();
     const delay = (callback, time) => window.setTimeout(callback, time);
     const equal = (item, id) => item.id === id;
@@ -93,14 +122,29 @@
     }
     const mock = {
       get_state: () => ({
-        settings, voices, devices, engine, has_vb_cable: false, base_models_ready: true,
+        settings, voices, devices, engine, has_vb_cable: devices.has_vb_cable, base_models_ready: true,
+        vb_cable_installer_ready: true,
         converter_installed: true, logs_path: 'logs/maskvox.log', version: '1.0.0',
         gpu_adapters: [{ id: 0, name: 'NVIDIA GeForce RTX 3070' }],
       }),
-      list_devices: () => devices,
+      list_devices() {
+        if (cableInstallerRan && !devices.has_vb_cable) {
+          devices.outputs.push({ id: 9, name: 'CABLE Input (VB-Audio Virtual Cable)' });
+          devices.cable_output_id = 9;
+          devices.has_vb_cable = true;
+          if (!settings.output_preferred) settings.output_id = 9;
+        }
+        return devices;
+      },
       list_voices: () => voices,
       start: () => start(), stop,
-      set_devices(values) { Object.assign(settings, values); save(); reconfigure(); return settings; },
+      set_devices(values) {
+        Object.assign(settings, values);
+        if ('output_id' in values) settings.output_preferred = true;
+        save();
+        reconfigure();
+        return settings;
+      },
       set_param(name, value) {
         settings[name] = value;
         save();
@@ -129,6 +173,12 @@
         imports.delete(id);
       },
       open_url(url) { window.open(url, '_blank', 'noopener,noreferrer'); },
+      install_vb_cable() { cableInstallerRan = true; return null; },
+      preview_voice() {
+        const voice = voices.find((item) => equal(item, settings.selected_voice_id));
+        if (!voice?.preview_ready) throw new Error('此音色暂无试听示例。');
+        return { url: mockPreview(voice.gender) };
+      },
       open_logs() { emit('warning', { message: '启动桌面程序后可以打开实际日志目录。' }); },
       open_install_guide() { emit('warning', { message: '在项目目录的 README.md 中查看安装方法。' }); },
       dismiss_onboarding() { settings.onboarding_dismissed = true; save(); return settings; },

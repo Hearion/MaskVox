@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import re
@@ -20,9 +19,10 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.audio.stream import SAMPLE_RATE
-from app.config import ASSETS_DIR, VOICES_DIR, setup_logging
+from app.config import ASSETS_DIR, BUILTIN_VOICES_DIR, VOICES_DIR, setup_logging
 from app.engine.ort_session import DML, available_providers
 from app.engine.realtime import LATENCY_FRAMES, RvcPipeline
+from app.voices.library import VoiceLibrary
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +104,9 @@ def main() -> int:
         parser.error("请检查检索比例、噪声门或显卡编号的取值范围")
     try:
         setup_logging()
-        voice_dir = VOICES_DIR / args.voice
-        voice = json.loads((voice_dir / "meta.json").read_text(encoding="utf-8"))
+        library = VoiceLibrary(VOICES_DIR, BUILTIN_VOICES_DIR)
+        voice_dir = library.directory(args.voice)
+        voice = library.get(args.voice)
         samples = read_wav(args.input)
         params = {"pitch": args.pitch, "index_rate": args.index_rate, "gate_db": args.gate_db}
         gpu = args.gpu if DML in available_providers() else -1

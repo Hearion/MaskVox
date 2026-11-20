@@ -3,6 +3,10 @@
 
   const app = window.MaskVox;
   app.voiceSpec = (voice) => `${voice.version} · ${voice.sr / 1000}k`;
+  app.voiceKind = (voice) => {
+    if (!voice.builtin) return '';
+    return { male: '内置男声', female: '内置女声' }[voice.gender] ?? '内置音色';
+  };
   function avatarGradient(name) {
     let hash = 0;
     for (const char of name) hash = Math.imul(37, hash) + char.codePointAt(0) | 0;
@@ -75,6 +79,12 @@
         card.root.dataset.selected = String(voice.id === selected);
         card.choose.setAttribute('aria-pressed', String(voice.id === selected));
         card.choose.disabled = loading;
+        const exportable = voice.builtin ? voice.exportable === true : voice.exportable !== false;
+        card.menu.querySelector('[data-action=export]').hidden = !exportable;
+        card.menu.querySelector('[data-action=rename]').hidden = !!voice.builtin;
+        card.menu.querySelector('[data-action=delete]').hidden = !!voice.builtin;
+        card.more.hidden = !!voice.builtin && !exportable;
+        if (card.more.hidden && openMenu === card) closeMenu();
         if (newIds.delete(voice.id)) {
           card.root.dataset.new = 'true';
           card.root.addEventListener('animationend', () => delete card.root.dataset.new, { once: true });
@@ -86,12 +96,17 @@
           card.avatar.textContent = Array.from(voice.name.trim())[0] ?? '音';
           card.avatar.style.background = avatarGradient(voice.name);
         }
-        const metaText = `${app.voiceSpec(voice)} · ${voice.has_index ? '有索引' : '无索引'}`;
-        if (card.meta.textContent !== metaText) {
+        const kind = app.voiceKind(voice);
+        const index = voice.has_index ? '有索引' : '无索引';
+        const spec = app.voiceSpec(voice);
+        const metaText = [kind, spec, index].filter(Boolean).join(' · ');
+        if (card.meta.title !== metaText) {
           const label = document.createElement('span');
-          label.className = voice.has_index ? 'voice-meta-index' : '';
-          label.textContent = voice.has_index ? '有索引' : '无索引';
-          card.meta.replaceChildren(`${app.voiceSpec(voice)} · `, label);
+          label.className = kind ? 'voice-meta-builtin' : voice.has_index ? 'voice-meta-index' : '';
+          label.textContent = kind || index;
+          card.meta.title = metaText;
+          if (kind) card.meta.replaceChildren(label, ` · ${spec}`);
+          else card.meta.replaceChildren(`${spec} · `, label);
         }
         return card.root;
       });
